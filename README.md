@@ -1,90 +1,87 @@
 # Team Jeopardy
 
-Realtime, multi-user Jeopardy for distributed teams — powered by **[jmjava/skgraph](https://github.com/jmjava/skgraph)** code ingest.
+Realtime, multi-user Jeopardy for distributed teams. Ingest **Maven**, **Gradle**, **Vue**, or **Python** projects into a shared code graph, auto-generate a board aimed at **engineers and QA**, and play over bidirectional STOMP WebSockets.
 
-Host a room, ingest a Maven reactor through `skgraph-core`, auto-generate a board from modules / dependencies / Java AST / DICE propositions / OSGi, then play with teammates worldwide over bidirectional STOMP WebSockets.
+## Ingest (no private skgraph dependency)
 
-## What it expands from skgraph
+Maven/OSGi parsing ideas are **extracted in-repo** from [`jmjava/skgraph`](https://github.com/jmjava/skgraph). Gradle, Vue, and Python are first-class. OSGi is optional and skipped when markers are absent.
 
-| skgraph piece | Team Jeopardy use |
-|---|---|
-| `IngestRunner` | Ingests a reactor root (`pom.xml` tree) in-process |
-| `IngestResult` (modules, edges, Java AST, OSGi, propositions) | Source material for Jeopardy categories |
-| `InMemoryGraphStore.project` | Keeps the latest snapshot available for the room |
-| Sample `fixtures/sample-reactor` | Copied to `samples/sample-reactor` for one-click demos |
+| Kind | Markers | What gets indexed |
+|------|---------|-------------------|
+| Maven | `pom.xml` | modules, deps, plugins, Java sources, optional OSGi |
+| Gradle | `settings.gradle(.kts)` / `build.gradle(.kts)` | multi-project modules, deps, plugins, Java |
+| Vue / npm | `package.json` + `.vue` | SFCs, npm deps/scripts, routes |
+| Python | `pyproject.toml` / `requirements.txt` / sources | files, imports, classes, callables |
 
-Board categories produced from skgraph facts:
+### Hierarchy enrichers
 
-1. **MODULE MADNESS**
-2. **DEPENDENCY DRAMA**
-3. **NAME THAT TYPE**
-4. **PROPOSITION POINTS**
-5. **OSGi OR BUST**
-6. **REACTOR FACTS**
+- **`JavaClassHierarchyEnricher`** — `EXTENDS` / `IMPLEMENTS`
+- **`VueComponentHierarchyEnricher`** — parent template `USES` child components
 
-## Architecture
+### Language-scoped design-pattern strategies
 
-```text
-Vue client  <──STOMP/SockJS──>  Spring Boot game server
-   lobby / board / buzz              GameRoomService (push/pull state)
-                                     SkgraphIngestService → skgraph-core
-                                     SkgraphQuestionGenerator → Board
+Each language has its own `PatternStrategy` (skgraph-style DICE `PatternFact`s):
+
+| Strategy | Languages | Patterns |
+|----------|-----------|----------|
+| `JavaDesignPatternStrategy` | java | Strategy, Template Method, Singleton, Builder, Factory Method, Observer, Repository/DAO, Spring/DI |
+| `VueDesignPatternStrategy` | vue (+ composables/stores) | Composable, Pinia/Vuex store, Provide/Inject, Container/Presentational, `<script setup>` |
+| `JavaScriptDesignPatternStrategy` | javascript, typescript | Module, Factory, Singleton export, Observer/EventEmitter, Middleware |
+| `PythonDesignPatternStrategy` | python | Strategy ABC, Dataclass, Decorator, Context Manager, Repository, Factory, Singleton |
+
+## Question strategy (coders + QA)
+
+Boards are built from pluggable `QuestionStrategy` beans, then optionally polished:
+
+1. **Heuristic (always on)** — deterministic clues from the graph + pattern facts
+2. **OpenAI enricher (optional)** — rewrites prompts/explanations only; **answers stay fixed**
+
+| Persona | Categories (examples) | What they’re good for |
+|---------|----------------------|------------------------|
+| **CODER** (`DEV:…`) | Design patterns, name that type, API surface, ownership & deps | Implementation ownership, APIs, architecture |
+| **QA** (`QA:…`) | Test matrix, contracts, blast radius, pattern risk | Regression targets, combinatorial variants, boundaries |
+| Structure | Modules, components, hierarchy | Shared project orientation |
+
+Config (`application.yml` / env):
+
+```yaml
+team-jeopardy:
+  questions:
+    personas: coder,qa          # or coder | qa
+    max-categories: 6
+  openai:
+    enabled: false              # set true to polish prompts
+    api-key: ${OPENAI_API_KEY:}
+    model: gpt-4o-mini
 ```
-
-- **REST** bootstrap: create/join room, ingest board, fallback actions
-- **WebSocket** (`/ws` + `/app/room/{id}/action` → `/topic/room.{id}`): low-latency buzz / judge / board sync across regions
-
-## Prerequisites
-
-- JDK 21, Maven 3.9+
-- Node 20+ (for the web client)
-- Access to private `jmjava/skgraph` (install `skgraph-core` into the local Maven repo)
 
 ```bash
-# one-time: install skgraph-core
-git clone https://github.com/jmjava/skgraph.git
-cd skgraph
-mvn -pl skgraph-core -am install -DskipTests
+export OPENAI_API_KEY=sk-...
+# enable in application.yml or:
+# TEAM_JEOPARDY_OPENAI_ENABLED=true  (if you bind relaxed props / override)
 ```
 
-## Run locally
+Without a key, ingest and boards still work end-to-end offline.
+
+## Run
 
 ```bash
-# terminal 1 — game server
-cd server
-mvn spring-boot:run
-
-# terminal 2 — web client
-cd client
-npm install
-npm run dev
+cd server && mvn spring-boot:run
+cd client && npm install && npm run dev
 ```
 
-Open http://localhost:5173
+Open http://localhost:5173 — create a room, ingest Maven / Gradle / Vue / Python sample, start game.
 
-1. **Create room** as host → share the 6-character code  
-2. Teammates **Join** with a team name from anywhere  
-3. Host clicks **Ingest sample-reactor via skgraph**  
-4. Host **Start game**, selects clues; players **Buzz**; host judges
-
-### Health check
-
-```bash
-curl -s http://localhost:8080/api/health
-```
-
-### Ingest a custom reactor
+### Custom path
 
 ```bash
 curl -s -X POST http://localhost:8080/api/rooms/ingest \
   -H 'Content-Type: application/json' \
   -d '{
     "roomId":"ROOM_ID",
-    "playerId":"HOST_PLAYER_ID",
+    "playerId":"HOST_ID",
     "useSample": false,
-    "path":"/absolute/path/to/maven-reactor",
-    "repo":"my-reactor",
-    "branch":"main",
+    "path":"/absolute/path/to/project",
     "boardTitle":"Our Code Jeopardy"
   }'
 ```
@@ -96,16 +93,11 @@ cd server && mvn test
 cd client && npm test
 ```
 
-## Project layout
+## Layout
 
 ```text
-client/                 Vue 3 + Vite + STOMP client
-server/                 Spring Boot game + skgraph adapter
-samples/sample-reactor  Demo Maven/OSGi reactor (from skgraph fixtures)
+client/     Vue 3 + STOMP multiplayer UI
+server/     Spring Boot game + ingest/pattern/question strategies
+samples/    sample-reactor, sample-gradle, sample-vue, sample-python
+NOTICE      attribution for skgraph-derived Maven/OSGi ports
 ```
-
-## Notes
-
-- `skgraph` remains the source of truth for Maven/OSGi/Java graph extraction; this repo is the multiplayer game shell + question generation layer.
-- Game state is in-memory (single server instance). For multi-region fan-out later, swap the room store for Redis / Redisson pub-sub while keeping the same STOMP topics.
-- Do not commit skgraph sources here — depend on the installed `com.skgraph:skgraph-core` artifact.

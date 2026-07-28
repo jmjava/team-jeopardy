@@ -13,6 +13,23 @@ public record ActiveClue(
         boolean responseVisible,
         String buzzedPlayerId,
         String buzzedPlayerName,
-        String buzzedTeamId
+        String buzzedTeamId,
+        String buzzedTeamName,
+        String buzzedTeamColor
 ) {
+    public ActiveClue withoutAnswer() {
+        return new ActiveClue(
+                clueId, categoryId, categoryTitle, value,
+                prompt, null, null, sourcePath, dailyDouble, false,
+                buzzedPlayerId, buzzedPlayerName, buzzedTeamId, buzzedTeamName, buzzedTeamColor
+        );
+    }
+
+    public ActiveClue asHostPreviewTeaser() {
+        return new ActiveClue(
+                clueId, categoryId, categoryTitle, value,
+                null, null, null, null, dailyDouble, false,
+                null, null, null, null, null
+        );
+    }
 }

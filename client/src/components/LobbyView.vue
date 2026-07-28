@@ -10,7 +10,7 @@ const emit = defineEmits(['create', 'join'])
 
 const createForm = reactive({
   hostName: 'Host',
-  title: 'skgraph Team Jeopardy'
+  title: 'Team Jeopardy'
 })
 
 const joinForm = reactive({
@@ -23,20 +23,20 @@ const joinForm = reactive({
 <template>
   <section class="hero">
     <div class="copy">
-      <h2>Code-graph Jeopardy for distributed teams</h2>
+      <h2>Team Jeopardy for distributed coders &amp; QA</h2>
       <p>
-        Host ingests <strong>Maven</strong>, <strong>Gradle</strong>, or <strong>Vue</strong>
-        projects into a shared code graph, auto-builds a Jeopardy board, then teammates
-        buzz in over a bidirectional WebSocket channel from anywhere.
+        The moderator builds a board from your codebase, admits players from the lobby,
+        then runs clues with a host preview and live buzzers on a shared screen.
       </p>
       <p class="muted" v-if="health">
-        Engine {{ health.engine }} · supports {{ (health.supported || []).join(', ') }}
+        Engine {{ health.engine }} · {{ (health.supported || []).join(' · ') }}
       </p>
     </div>
 
     <div class="cards">
-      <form class="card" @submit.prevent="emit('create', { ...createForm })">
-        <h3>Create room</h3>
+      <form class="panel" @submit.prevent="emit('create', { ...createForm })">
+        <h3>Moderator</h3>
+        <p class="muted tiny">Create a room and manage admissions.</p>
         <label>
           Host name
           <input v-model="createForm.hostName" required maxlength="40" />
@@ -45,11 +45,12 @@ const joinForm = reactive({
           Board title
           <input v-model="createForm.title" maxlength="80" />
         </label>
-        <button type="submit" :disabled="busy">Create &amp; host</button>
+        <button type="submit" :disabled="busy">Create room</button>
       </form>
 
-      <form class="card" @submit.prevent="emit('join', { ...joinForm })">
-        <h3>Join room</h3>
+      <form class="panel" @submit.prevent="emit('join', { ...joinForm })">
+        <h3>Player</h3>
+        <p class="muted tiny">Join the lobby — the host lets you in.</p>
         <label>
           Room code
           <input v-model="joinForm.code" required maxlength="8" placeholder="ABC123" />
@@ -62,7 +63,7 @@ const joinForm = reactive({
           Team name
           <input v-model="joinForm.teamName" required maxlength="40" placeholder="Blue Owls" />
         </label>
-        <button type="submit" class="secondary" :disabled="busy">Join game</button>
+        <button type="submit" class="secondary" :disabled="busy">Join lobby</button>
       </form>
     </div>
   </section>
@@ -71,21 +72,24 @@ const joinForm = reactive({
 <style scoped>
 .hero {
   display: grid;
-  gap: 1.25rem;
+  gap: 1.5rem;
+  padding-top: 0.5rem;
 }
 
 .copy {
-  max-width: 46rem;
-  animation: rise 500ms ease both;
+  max-width: 40rem;
+  animation: rise 480ms ease both;
 }
 
 .copy h2 {
-  font-size: clamp(1.8rem, 4vw, 2.6rem);
-  margin-bottom: 0.5rem;
+  font-size: clamp(2rem, 5vw, 3rem);
+  line-height: 0.95;
+  margin-bottom: 0.65rem;
 }
 
 .copy p {
-  font-size: 1.05rem;
+  margin: 0;
+  font-size: 1.08rem;
   line-height: 1.5;
   color: #d7e2f8;
 }
@@ -96,19 +100,29 @@ const joinForm = reactive({
   gap: 1rem;
 }
 
-.card {
-  background: var(--panel);
-  border: 1px solid var(--fog);
+.panel {
+  background: rgba(12, 28, 58, 0.78);
+  border: 1px solid rgba(244, 247, 255, 0.08);
   border-radius: 18px;
-  padding: 1.25rem;
+  padding: 1.25rem 1.3rem;
   display: grid;
-  gap: 0.75rem;
+  gap: 0.7rem;
   box-shadow: var(--shadow);
-  animation: rise 650ms ease both;
+  animation: rise 620ms ease both;
 }
 
-.card:nth-child(2) {
-  animation-delay: 80ms;
+.panel:nth-child(2) {
+  animation-delay: 70ms;
+}
+
+.panel h3 {
+  margin: 0;
+  font-size: 1.55rem;
+}
+
+.tiny {
+  margin: -0.15rem 0 0.15rem;
+  font-size: 0.92rem;
 }
 
 label {

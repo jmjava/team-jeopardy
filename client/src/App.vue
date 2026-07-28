@@ -1,11 +1,18 @@
 <script setup>
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
-import { createRoom, getHealth, ingestBoard, joinRoom, postAction } from './api'
+import { browseGithub, createRoom, getHealth, ingestBoard, joinRoom, postAction } from './api'
 import { connectGameSocket } from './useGameSocket'
 import LobbyView from './components/LobbyView.vue'
+import ModeratorConsole from './components/ModeratorConsole.vue'
+import WaitingRoom from './components/WaitingRoom.vue'
 import BoardView from './components/BoardView.vue'
 import ClueStage from './components/ClueStage.vue'
+import HostCluePreview from './components/HostCluePreview.vue'
 import Scorebar from './components/Scorebar.vue'
+import SharedDisplay from './components/SharedDisplay.vue'
+
+const params = new URLSearchParams(window.location.search)
+const viewMode = ref(params.get('view') === 'display' ? 'display' : 'app')
 
 const session = reactive({
   roomId: '',
@@ -13,7 +20,8 @@ const session = reactive({
   playerId: '',
   hostName: '',
   displayName: '',
-  isHost: false
+  isHost: false,
+  admitted: false
 })
 
 const snapshot = ref(null)
@@ -22,29 +30,59 @@ const error = ref('')
 const busy = ref(false)
 const ingestSummary = ref(null)
 const health = ref(null)
+const defaultRepo = ref('jmjava/team-jeopardy')
 let socket = null
 
 const phase = computed(() => snapshot.value?.phase || 'LOBBY')
+const me = computed(() =>
+  (snapshot.value?.players || []).find((p) => p.id === session.playerId)
+)
+const admitted = computed(() => session.isHost || !!me.value?.admitted)
+const myTeamName = computed(() => {
+  const teamId = me.value?.teamId
+  return snapshot.value?.teams?.find((t) => t.id === teamId)?.name || ''
+})
+
+const showHostPreview = computed(
+  () => session.isHost && phase.value === 'HOST_PREVIEW' && snapshot.value?.activeClue
+)
 const showClue = computed(() =>
   ['CLUE_OPEN', 'BUZZ_LOCKED', 'ANSWER_REVEALED'].includes(phase.value)
+  || (!session.isHost && phase.value === 'HOST_PREVIEW')
 )
+const showBoard = computed(() =>
+  admitted.value && (phase.value === 'BOARD' || phase.value === 'FINISHED')
+)
+const displayUrl = computed(() => {
+  if (!session.roomId) return ''
+  const url = new URL(window.location.href)
+  url.searchParams.set('view', 'display')
+  url.searchParams.set('room', session.roomId)
+  url.searchParams.set('code', session.code)
+  return url.toString()
+})
 
 async function refreshHealth() {
   try {
     health.value = await getHealth()
+    if (health.value?.defaultRepo) {
+      defaultRepo.value = health.value.defaultRepo
+    }
   } catch {
     health.value = null
   }
 }
-
 refreshHealth()
 
-function bindSocket(roomId) {
+function bindSocket(roomId, isHost) {
   socket?.disconnect()
   socket = connectGameSocket({
     roomId,
+    isHost,
     onSnapshot: (next) => {
       snapshot.value = next
+      const self = (next.players || []).find((p) => p.id === session.playerId)
+      session.admitted = !!self?.admitted || session.isHost
     },
     onStatus: (status) => {
       socketStatus.value = status
@@ -66,8 +104,9 @@ async function onCreate(form) {
     session.hostName = result.hostName
     session.displayName = result.hostName
     session.isHost = true
+    session.admitted = true
     snapshot.value = result.snapshot
-    bindSocket(session.roomId)
+    bindSocket(session.roomId, true)
   } catch (err) {
     error.value = err.message
   } finally {
@@ -89,8 +128,9 @@ async function onJoin(form) {
     session.playerId = result.playerId
     session.displayName = form.displayName
     session.isHost = result.snapshot.hostPlayerId === result.playerId
+    session.admitted = false
     snapshot.value = result.snapshot
-    bindSocket(session.roomId)
+    bindSocket(session.roomId, session.isHost)
   } catch (err) {
     error.value = err.message
   } finally {
@@ -119,7 +159,10 @@ async function runAction(type, payload = {}) {
   }
 }
 
-async function onIngest(sampleType = 'maven') {
+async function onIngest(payload = {}) {
+  const sampleType = typeof payload === 'string' ? payload : payload.sampleType || 'maven'
+  const questionHints = typeof payload === 'object' ? payload.questionHints : ''
+  const questionFocuses = typeof payload === 'object' ? payload.questionFocuses : []
   error.value = ''
   busy.value = true
   try {
@@ -128,7 +171,9 @@ async function onIngest(sampleType = 'maven') {
       playerId: session.playerId,
       useSample: true,
       sampleType,
-      boardTitle: snapshot.value?.title || `${sampleType} Team Jeopardy`
+      boardTitle: snapshot.value?.title || `${sampleType} Team Jeopardy`,
+      questionHints,
+      questionFocuses
     })
     snapshot.value = result.snapshot
     ingestSummary.value = result.ingestSummary
@@ -137,6 +182,99 @@ async function onIngest(sampleType = 'maven') {
   } finally {
     busy.value = false
   }
+}
+
+async function onIngestGithub(payload) {
+  error.value = ''
+  busy.value = true
+  try {
+    const result = await ingestBoard({
+      roomId: session.roomId,
+      playerId: session.playerId,
+      useSample: false,
+      sampleType: 'github',
+      repo: payload.repo,
+      ref: payload.ref,
+      folders: payload.folders || [],
+      includePulls: payload.includePulls !== false,
+      boardTitle: snapshot.value?.title || `GitHub: ${payload.repo}`,
+      questionHints: payload.questionHints,
+      questionFocuses: payload.questionFocuses
+    })
+    snapshot.value = result.snapshot
+    ingestSummary.value = result.ingestSummary
+  } catch (err) {
+    error.value = err.message
+  } finally {
+    busy.value = false
+  }
+}
+
+async function onIngestPulls(payload) {
+  error.value = ''
+  busy.value = true
+  try {
+    const result = await ingestBoard({
+      roomId: session.roomId,
+      playerId: session.playerId,
+      useSample: false,
+      sampleType: 'pulls',
+      repo: payload.repo,
+      boardTitle: snapshot.value?.title || `PRs: ${payload.repo}`,
+      questionHints: payload.questionHints,
+      questionFocuses: payload.questionFocuses
+    })
+    snapshot.value = result.snapshot
+    ingestSummary.value = result.ingestSummary
+  } catch (err) {
+    error.value = err.message
+  } finally {
+    busy.value = false
+  }
+}
+
+async function onBrowseGithub(payload) {
+  try {
+    const result = await browseGithub({
+      repo: payload.repo,
+      ref: payload.ref,
+      path: payload.path,
+      recursive: payload.recursive
+    })
+    payload.resolve?.(result)
+  } catch (err) {
+    payload.reject?.(err)
+    error.value = err.message
+  }
+}
+
+function openDisplay() {
+  if (displayUrl.value) {
+    window.open(displayUrl.value, '_blank', 'noopener')
+  }
+}
+
+// Display mode can attach to an existing room via query params
+async function bootDisplay() {
+  const room = params.get('room')
+  const code = params.get('code')
+  if (!room && !code) return
+  try {
+    const { getRoom, getRoomByCode } = await import('./api')
+    const snap = room ? await getRoom(room) : await getRoomByCode(code)
+    session.roomId = snap.roomId
+    session.code = snap.code
+    session.isHost = false
+    session.admitted = true
+    snapshot.value = snap
+    bindSocket(session.roomId, false)
+  } catch (err) {
+    error.value = err.message
+  }
+}
+
+if (viewMode.value === 'display') {
+  bootDisplay()
 }
 
 watch(
@@ -153,10 +291,12 @@ onBeforeUnmount(() => socket?.disconnect())
 </script>
 
 <template>
-  <div class="shell">
+  <SharedDisplay v-if="viewMode === 'display'" :snapshot="snapshot" />
+
+  <div v-else class="shell">
     <header class="top">
       <div>
-        <p class="eyebrow">Maven · Gradle · Vue → live board</p>
+        <p class="eyebrow">Moderator · lobby · live buzzers</p>
         <h1 class="brand">Team Jeopardy</h1>
       </div>
       <div class="meta" v-if="session.code">
@@ -186,64 +326,50 @@ onBeforeUnmount(() => socket?.disconnect())
     />
 
     <template v-else>
-      <Scorebar :teams="snapshot?.teams || []" :phase="phase" />
+      <Scorebar
+        v-if="admitted && phase !== 'LOBBY'"
+        :teams="snapshot?.teams || []"
+        :phase="phase"
+        :buzzed-team-id="snapshot?.activeClue?.buzzedTeamId"
+      />
 
-      <section v-if="phase === 'LOBBY'" class="lobby-panel">
-        <div>
-          <h2>Host lobby</h2>
-          <p class="muted">
-            Ingest a sample (or any path on the server). Maven/OSGi parsing is extracted from
-            skgraph; Gradle multi-projects and Vue SFCs use the same in-repo graph.
-          </p>
-          <div class="actions">
-            <button v-if="session.isHost" :disabled="busy" @click="onIngest('maven')">
-              {{ busy ? 'Ingesting…' : 'Ingest Maven sample' }}
-            </button>
-            <button v-if="session.isHost" class="secondary" :disabled="busy" @click="onIngest('gradle')">
-              Ingest Gradle sample
-            </button>
-            <button v-if="session.isHost" class="secondary" :disabled="busy" @click="onIngest('vue')">
-              Ingest Vue sample
-            </button>
-            <button
-              v-if="session.isHost && snapshot?.board"
-              class="ok"
-              :disabled="busy || !(snapshot?.teams?.length)"
-              @click="runAction('START')"
-            >
-              Start game
-            </button>
-            <button
-              v-if="!session.isHost"
-              class="secondary"
-              @click="runAction('CREATE_TEAM', { teamName: session.displayName + ' Team' })"
-            >
-              Ensure my team
-            </button>
-          </div>
-          <pre v-if="ingestSummary" class="summary">{{ ingestSummary }}</pre>
-        </div>
-        <aside>
-          <h3>Players</h3>
-          <ul>
-            <li v-for="player in snapshot?.players || []" :key="player.id">
-              {{ player.displayName }}
-              <span v-if="player.host" class="tag">host</span>
-              <span v-if="player.teamId" class="tag">teamed</span>
-            </li>
-          </ul>
-          <h3>Teams</h3>
-          <ul>
-            <li v-for="team in snapshot?.teams || []" :key="team.id">
-              <i :style="{ background: team.color }"></i>
-              {{ team.name }}
-            </li>
-          </ul>
-        </aside>
+      <ModeratorConsole
+        v-if="session.isHost && phase === 'LOBBY'"
+        :snapshot="snapshot"
+        :busy="busy"
+        :ingest-summary="ingestSummary"
+        :display-url="displayUrl"
+        :default-repo="defaultRepo"
+        @ingest="onIngest"
+        @ingest-github="onIngestGithub"
+        @ingest-pulls="onIngestPulls"
+        @browse-github="onBrowseGithub"
+        @admit="(playerId) => runAction('ADMIT_PLAYER', { playerId })"
+        @admit-all="runAction('ADMIT_ALL')"
+        @start="runAction('START')"
+        @open-display="openDisplay"
+      />
+
+      <WaitingRoom
+        v-else-if="!admitted"
+        :code="session.code"
+        :display-name="session.displayName"
+        :team-name="myTeamName"
+        :phase="phase"
+      />
+
+      <section v-else-if="admitted && phase === 'LOBBY'" class="waiting-start">
+        <p class="kicker">You're in</p>
+        <h2>Waiting for kickoff</h2>
+        <p class="muted">
+          The moderator admitted you
+          <template v-if="myTeamName"> on <strong>{{ myTeamName }}</strong></template>.
+          Hang tight until the game starts.
+        </p>
       </section>
 
       <BoardView
-        v-else-if="phase === 'BOARD' || phase === 'FINISHED'"
+        v-else-if="showBoard"
         :board="snapshot?.board"
         :cells="snapshot?.cells || []"
         :is-host="session.isHost"
@@ -251,16 +377,25 @@ onBeforeUnmount(() => socket?.disconnect())
         @select="(clueId) => runAction('SELECT_CLUE', { clueId })"
       />
 
+      <HostCluePreview
+        v-else-if="showHostPreview"
+        :clue="snapshot?.activeClue"
+        @open="runAction('OPEN_BUZZERS')"
+        @reveal="runAction('REVEAL')"
+        @back="runAction('RETURN_BOARD')"
+      />
+
       <ClueStage
         v-else-if="showClue"
         :clue="snapshot?.activeClue"
         :phase="phase"
         :is-host="session.isHost"
-        :can-buzz="!session.isHost"
+        :can-buzz="admitted && !session.isHost"
         @buzz="runAction('BUZZ')"
         @judge="(correct) => runAction('JUDGE', { correct })"
         @reveal="runAction('REVEAL')"
         @back="runAction('RETURN_BOARD')"
+        @open="runAction('OPEN_BUZZERS')"
       />
     </template>
   </div>
@@ -270,7 +405,7 @@ onBeforeUnmount(() => socket?.disconnect())
 .shell {
   width: min(1180px, calc(100% - 2rem));
   margin: 0 auto;
-  padding: 1.5rem 0 3rem;
+  padding: 1.35rem 0 3rem;
 }
 
 .top {
@@ -278,35 +413,35 @@ onBeforeUnmount(() => socket?.disconnect())
   justify-content: space-between;
   gap: 1rem;
   align-items: end;
-  margin-bottom: 1.25rem;
+  margin-bottom: 1.35rem;
 }
 
 .eyebrow {
   margin: 0 0 0.2rem;
   text-transform: uppercase;
   letter-spacing: 0.18em;
-  font-size: 0.75rem;
+  font-size: 0.72rem;
   color: var(--gold);
 }
 
 .brand {
-  font-size: clamp(2.8rem, 8vw, 4.8rem);
+  font-size: clamp(2.6rem, 7vw, 4.4rem);
   line-height: 0.9;
 }
 
 .meta {
   display: flex;
   gap: 1rem;
-  padding: 0.75rem 1rem;
+  padding: 0.7rem 1rem;
   border-radius: 14px;
-  background: var(--panel);
-  box-shadow: var(--shadow);
+  background: rgba(6, 16, 34, 0.55);
+  border: 1px solid rgba(244, 247, 255, 0.08);
 }
 
 .meta > div {
   display: grid;
-  gap: 0.15rem;
-  min-width: 5rem;
+  gap: 0.12rem;
+  min-width: 4.5rem;
 }
 
 .meta strong.connected {
@@ -324,74 +459,33 @@ onBeforeUnmount(() => socket?.disconnect())
   color: #ffd2cc;
   padding: 0.75rem 1rem;
   border-radius: 12px;
+  margin-bottom: 1rem;
 }
 
-.lobby-panel {
+.waiting-start {
+  min-height: 40vh;
   display: grid;
-  grid-template-columns: 1.5fr 1fr;
-  gap: 1rem;
-}
-
-.lobby-panel > div,
-.lobby-panel > aside {
-  background: var(--panel);
-  border: 1px solid var(--fog);
-  border-radius: 18px;
-  padding: 1.25rem;
-  box-shadow: var(--shadow);
-}
-
-.actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.75rem;
-  margin-top: 1rem;
-}
-
-.summary {
-  margin-top: 1rem;
-  padding: 0.9rem;
-  border-radius: 12px;
-  background: rgba(0, 0, 0, 0.25);
-  overflow: auto;
-  font-size: 0.85rem;
-}
-
-ul {
-  list-style: none;
-  padding: 0;
-  margin: 0.4rem 0 1rem;
-}
-
-li {
-  display: flex;
-  align-items: center;
+  align-content: center;
   gap: 0.5rem;
-  padding: 0.35rem 0;
+  max-width: 34rem;
 }
 
-.tag {
-  font-size: 0.7rem;
+.waiting-start .kicker {
+  margin: 0;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
-  padding: 0.15rem 0.4rem;
-  border-radius: 999px;
-  background: rgba(240, 208, 96, 0.15);
+  letter-spacing: 0.16em;
+  font-size: 0.72rem;
   color: var(--gold);
 }
 
-li i {
-  width: 0.7rem;
-  height: 0.7rem;
-  border-radius: 50%;
-  display: inline-block;
+.waiting-start h2 {
+  font-size: clamp(2rem, 5vw, 3rem);
+  line-height: 0.95;
 }
 
 @media (max-width: 800px) {
   .top,
-  .lobby-panel,
   .meta {
-    grid-template-columns: 1fr;
     flex-direction: column;
     align-items: stretch;
   }

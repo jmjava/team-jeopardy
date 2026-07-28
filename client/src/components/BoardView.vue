@@ -8,7 +8,8 @@ const props = defineProps({
     default: () => []
   },
   isHost: Boolean,
-  finished: Boolean
+  finished: Boolean,
+  display: Boolean
 })
 
 const emit = defineEmits(['select'])
@@ -25,14 +26,10 @@ const categories = computed(() => props.board?.categories || [])
 </script>
 
 <template>
-  <section class="board-wrap">
-    <div class="heading">
+  <section class="board-wrap" :class="{ display }">
+    <div class="heading" v-if="!display">
       <h2>{{ board?.title || 'Board' }}</h2>
-      <p class="muted" v-if="board?.graphDigest">
-        skgraph digest · {{ board.graphDigest.nodes }} nodes ·
-        {{ board.graphDigest.edges }} edges ·
-        {{ board.graphDigest.types }} types
-      </p>
+      <p class="muted" v-if="isHost && !finished">Select a clue — you’ll see it before players.</p>
       <p v-if="finished" class="done">Game finished</p>
     </div>
 
@@ -67,7 +64,7 @@ const categories = computed(() => props.board?.categories || [])
 }
 
 .heading {
-  margin-bottom: 0.9rem;
+  margin-bottom: 0.95rem;
 }
 
 .heading h2 {
@@ -82,38 +79,45 @@ const categories = computed(() => props.board?.categories || [])
 .board {
   display: grid;
   grid-template-columns: repeat(var(--cols), minmax(0, 1fr));
-  gap: 0.55rem;
+  gap: 0.5rem;
 }
 
 .category {
   display: grid;
-  gap: 0.55rem;
+  gap: 0.5rem;
 }
 
 .cat-title,
 .cell {
-  background: linear-gradient(180deg, #1760d6, var(--board));
+  background: linear-gradient(180deg, #1a6ae0, var(--board));
   border: 3px solid #071833;
   box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.08), var(--shadow);
-  min-height: 5.2rem;
+  min-height: 5rem;
   display: grid;
   place-items: center;
   text-align: center;
-  padding: 0.6rem;
+  padding: 0.55rem;
+}
+
+.display .cat-title,
+.display .cell {
+  min-height: 5.6rem;
 }
 
 .cat-title {
   font-family: "Bebas Neue", sans-serif;
-  letter-spacing: 0.06em;
-  font-size: 1.15rem;
+  letter-spacing: 0.05em;
+  font-size: clamp(0.95rem, 1.6vw, 1.2rem);
   color: white;
-  min-height: 4.4rem;
+  min-height: 4.2rem;
+  line-height: 1.15;
 }
 
 .cell {
+  position: relative;
   color: var(--gold);
   font-family: "Bebas Neue", sans-serif;
-  font-size: clamp(1.6rem, 3vw, 2.2rem);
+  font-size: clamp(1.55rem, 3vw, 2.15rem);
   border-radius: 0;
 }
 
@@ -129,12 +133,11 @@ const categories = computed(() => props.board?.categories || [])
 .cell.dd:not(.answered)::after {
   content: "DD";
   position: absolute;
-  font-size: 0.7rem;
+  top: 0.35rem;
+  right: 0.4rem;
+  font-size: 0.65rem;
   color: #fff;
-}
-
-.cell {
-  position: relative;
+  letter-spacing: 0.08em;
 }
 
 @keyframes board-in {

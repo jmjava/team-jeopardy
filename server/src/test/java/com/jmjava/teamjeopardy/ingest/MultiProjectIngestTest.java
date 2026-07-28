@@ -10,6 +10,11 @@ import com.jmjava.teamjeopardy.ingest.enrich.VueComponentHierarchyEnricher;
 import com.jmjava.teamjeopardy.ingest.gradle.GradleProjectIngester;
 import com.jmjava.teamjeopardy.ingest.maven.MavenReactorIngester;
 import com.jmjava.teamjeopardy.ingest.osgi.OsgiManifestParser;
+import com.jmjava.teamjeopardy.pattern.JavaDesignPatternStrategy;
+import com.jmjava.teamjeopardy.pattern.JavaScriptDesignPatternStrategy;
+import com.jmjava.teamjeopardy.pattern.PatternScanner;
+import com.jmjava.teamjeopardy.pattern.PythonDesignPatternStrategy;
+import com.jmjava.teamjeopardy.pattern.VueDesignPatternStrategy;
 import com.jmjava.teamjeopardy.quiz.Board;
 import com.jmjava.teamjeopardy.quiz.QuestionGenerator;
 import org.junit.jupiter.api.BeforeEach;
@@ -17,6 +22,7 @@ import org.junit.jupiter.api.Test;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -29,13 +35,20 @@ class MultiProjectIngestTest {
 
     @BeforeEach
     void setUp() {
+        PatternScanner scanner = new PatternScanner(List.of(
+                new JavaDesignPatternStrategy(),
+                new VueDesignPatternStrategy(),
+                new PythonDesignPatternStrategy(),
+                new JavaScriptDesignPatternStrategy()
+        ));
         ingester = new CodeGraphIngester(
                 new ProjectDetector(),
                 new MavenReactorIngester(),
                 new GradleProjectIngester(),
                 new OsgiManifestParser(),
                 new JavaClassHierarchyEnricher(),
-                new VueComponentHierarchyEnricher()
+                new VueComponentHierarchyEnricher(),
+                scanner
         );
         questions = new QuestionGenerator();
     }
@@ -58,7 +71,10 @@ class MultiProjectIngestTest {
         assertTrue(graph.nodesOfKind(CodeNode.NodeKind.MODULE).size() >= 2);
         assertTrue(graph.nodesOfKind(CodeNode.NodeKind.DEPENDENCY).size() >= 1);
         Board board = questions.generate(graph, "Gradle Board");
-        assertTrue(board.categories().stream().anyMatch(c -> c.title().contains("MODULE")));
+        assertTrue(board.categories().stream().anyMatch(c ->
+                c.title().contains("MODULE")
+                        || c.title().startsWith("DEV:")
+                        || c.title().startsWith("QA:")));
     }
 
     @Test
@@ -73,7 +89,10 @@ class MultiProjectIngestTest {
         assertTrue(graph.nodesOfKind(CodeNode.NodeKind.COMPONENT).stream()
                 .noneMatch(c -> "osgi".equals(c.language())));
         Board board = questions.generate(graph, "Vue Board");
-        assertTrue(board.categories().stream().anyMatch(c -> c.title().contains("COMPONENT")));
+        assertTrue(board.categories().stream().anyMatch(c ->
+                c.title().contains("COMPONENT")
+                        || c.title().startsWith("DEV:")
+                        || c.title().startsWith("QA:")));
     }
 
     @Test

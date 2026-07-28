@@ -1,0 +1,5 @@
+[project]
+name = "sample-python"
+version = "0.1.0"
+description = "Sample Python project for Team Jeopardy pattern ingest"
+requires-python = ">=3.11"

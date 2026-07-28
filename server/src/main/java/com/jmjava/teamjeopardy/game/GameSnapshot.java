@@ -17,6 +17,8 @@ public record GameSnapshot(
         ActiveClue activeClue,
         List<Team> teams,
         List<Player> players,
-        List<BoardCellState> cells
+        List<BoardCellState> cells,
+        /** Moderator hints used when generating this board (may be blank). */
+        String questionHints
 ) {
 }

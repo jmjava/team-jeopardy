@@ -3,7 +3,9 @@ package com.jmjava.teamjeopardy.api;
 import com.jmjava.teamjeopardy.game.GameAction;
 import com.jmjava.teamjeopardy.game.GameRoomService;
 import com.jmjava.teamjeopardy.game.GameSnapshot;
+import com.jmjava.teamjeopardy.github.GitHubRepoFetcher;
 import com.jmjava.teamjeopardy.quiz.Board;
+import com.jmjava.teamjeopardy.quiz.QuestionHints;
 import jakarta.validation.Valid;
 import org.springframework.http.MediaType;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
@@ -12,11 +14,13 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -49,13 +53,16 @@ public class GameController {
     @PostMapping("/rooms/join")
     public Dto.JoinRoomResponse join(@Valid @RequestBody Dto.JoinRoomRequest request) {
         var joined = gameRoomService.joinRoom(request.code(), request.displayName(), request.teamName());
-        broadcast(joined.snapshot());
+        broadcast(joined.snapshot().roomId());
         return new Dto.JoinRoomResponse(joined.snapshot(), joined.playerId());
     }
 
     @GetMapping("/rooms/{roomId}")
-    public GameSnapshot getRoom(@PathVariable String roomId) {
-        return gameRoomService.requireSnapshot(roomId);
+    public GameSnapshot getRoom(
+            @PathVariable String roomId,
+            @RequestParam(required = false) String playerId
+    ) {
+        return gameRoomService.requireSnapshot(roomId, playerId);
     }
 
     @GetMapping("/rooms/code/{code}")
@@ -67,15 +74,78 @@ public class GameController {
 
     @PostMapping("/rooms/ingest")
     public Dto.IngestResponse ingest(@Valid @RequestBody Dto.IngestRequest request) throws IOException {
-        boolean useSample = request.useSample() == null || request.useSample();
-        BoardFactory.BuiltBoard built = useSample
-                ? boardFactory.fromSample(request.sampleType(), request.boardTitle())
-                : boardFactory.fromPath(Path.of(request.path()), request.boardTitle());
-
+        BoardFactory.BuiltBoard built = buildBoard(request);
         Board board = built.board();
-        GameSnapshot snapshot = gameRoomService.installBoard(request.roomId(), request.playerId(), board);
-        broadcast(snapshot);
+        GameSnapshot snapshot = gameRoomService.installBoard(
+                request.roomId(),
+                request.playerId(),
+                board,
+                request.questionHints()
+        );
+        broadcast(request.roomId());
         return new Dto.IngestResponse(snapshot, board, built.summary());
+    }
+
+    /**
+     * Admin helper: list directories in a GitHub repo for selective ingest.
+     */
+    @PostMapping("/github/browse")
+    public Map<String, Object> browseGithub(@Valid @RequestBody Dto.GitHubBrowseRequest request) throws IOException {
+        GitHubRepoFetcher fetcher = boardFactory.repoFetcher();
+        String ref = request.ref() == null || request.ref().isBlank() ? "HEAD" : request.ref();
+        List<GitHubRepoFetcher.RepoFolder> folders = Boolean.TRUE.equals(request.recursive())
+                ? fetcher.listDirectoriesRecursive(request.repo(), ref, 400)
+                : fetcher.listFolders(request.repo(), ref, request.path());
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("repo", request.repo());
+        body.put("ref", ref);
+        body.put("path", request.path() == null ? "" : request.path());
+        body.put("folders", folders);
+        return body;
+    }
+
+    private BoardFactory.BuiltBoard buildBoard(Dto.IngestRequest request) throws IOException {
+        QuestionHints hints = QuestionHints.of(request.questionHints(), request.questionFocuses());
+        String sampleType = request.sampleType();
+
+        if (BoardFactory.isPullsType(sampleType)) {
+            String repo = blankTo(request.repo(), boardFactory.defaultRepo());
+            return boardFactory.fromPullRequests(repo, request.prLimit(), request.boardTitle(), hints);
+        }
+
+        if (BoardFactory.isGitHubType(sampleType)
+                || (request.repo() != null && !request.repo().isBlank()
+                && Boolean.FALSE.equals(request.useSample())
+                && (request.path() == null || request.path().isBlank()))) {
+            String repo = blankTo(request.repo(), boardFactory.defaultRepo());
+            String ref = BoardFactory.resolveRef(request.ref(), request.branch(), request.commitSha());
+            boolean includePulls = request.includePulls() == null || request.includePulls();
+            return boardFactory.fromGitHub(
+                    repo,
+                    ref,
+                    request.folders(),
+                    includePulls,
+                    request.prLimit(),
+                    request.boardTitle(),
+                    hints
+            );
+        }
+
+        boolean useSample = request.useSample() == null || request.useSample();
+        if (useSample) {
+            return boardFactory.fromSample(sampleType, request.boardTitle(), hints);
+        }
+        if (request.repo() != null && !request.repo().isBlank() && request.path() != null) {
+            return boardFactory.fromPathWithPullRequests(
+                    Path.of(request.path()),
+                    request.boardTitle(),
+                    null,
+                    request.repo(),
+                    request.prLimit(),
+                    hints
+            );
+        }
+        return boardFactory.fromPath(Path.of(request.path()), request.boardTitle(), null, hints);
     }
 
     @PostMapping("/rooms/{roomId}/actions")
@@ -87,7 +157,7 @@ public class GameController {
                 roomId,
                 new GameAction(request.type(), request.playerId(), null, request.payload())
         );
-        broadcast(snapshot);
+        broadcast(roomId);
         return snapshot;
     }
 
@@ -96,13 +166,26 @@ public class GameController {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("status", "ok");
         body.put("engine", "team-jeopardy-ingest");
-        body.put("supported", new String[]{"maven", "gradle", "vue", "npm", "python", "generic"});
+        body.put("supported", new String[]{
+                "maven", "gradle", "vue", "npm", "python", "github", "pulls", "generic"
+        });
         body.put("samples", boardFactory.samplePaths());
+        body.put("defaultRepo", boardFactory.defaultRepo());
+        body.put("questionFocuses", List.of(
+                "patterns", "pull-requests", "qa", "apis", "architecture", "components", "security"
+        ));
         return body;
     }
 
-    private void broadcast(GameSnapshot snapshot) {
-        messagingTemplate.convertAndSend("/topic/room." + snapshot.roomId(), snapshot);
-        messagingTemplate.convertAndSend("/topic/room-code." + snapshot.code(), snapshot);
+    private void broadcast(String roomId) {
+        GameSnapshot pub = gameRoomService.publicSnapshot(roomId);
+        GameSnapshot host = gameRoomService.hostSnapshot(roomId);
+        messagingTemplate.convertAndSend("/topic/room." + pub.roomId(), pub);
+        messagingTemplate.convertAndSend("/topic/room-code." + pub.code(), pub);
+        messagingTemplate.convertAndSend("/topic/room." + host.roomId() + ".host", host);
+    }
+
+    private static String blankTo(String value, String fallback) {
+        return value == null || value.isBlank() ? fallback : value.trim();
     }
 }

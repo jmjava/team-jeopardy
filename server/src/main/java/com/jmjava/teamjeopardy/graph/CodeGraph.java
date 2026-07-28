@@ -1,5 +1,8 @@
 package com.jmjava.teamjeopardy.graph;
 
+import com.jmjava.teamjeopardy.github.PullRequestFact;
+import com.jmjava.teamjeopardy.pattern.PatternFact;
+
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashMap;
@@ -20,6 +23,10 @@ public class CodeGraph {
     private String projectName;
     private final Map<String, CodeNode> nodes = new LinkedHashMap<>();
     private final List<CodeEdge> edges = new ArrayList<>();
+    private List<PatternFact> patternFacts = List.of();
+    private List<PullRequestFact> pullRequests = List.of();
+    /** Moderator guidance for question emphasis on this board. */
+    private String questionHints = "";
 
     public CodeGraph(String rootPath) {
         this.rootPath = rootPath;
@@ -51,6 +58,30 @@ public class CodeGraph {
 
     public void addEdge(CodeEdge edge) {
         edges.add(edge);
+    }
+
+    public List<PatternFact> getPatternFacts() {
+        return patternFacts;
+    }
+
+    public void setPatternFacts(List<PatternFact> patternFacts) {
+        this.patternFacts = patternFacts == null ? List.of() : List.copyOf(patternFacts);
+    }
+
+    public List<PullRequestFact> getPullRequests() {
+        return pullRequests;
+    }
+
+    public void setPullRequests(List<PullRequestFact> pullRequests) {
+        this.pullRequests = pullRequests == null ? List.of() : List.copyOf(pullRequests);
+    }
+
+    public String getQuestionHints() {
+        return questionHints;
+    }
+
+    public void setQuestionHints(String questionHints) {
+        this.questionHints = questionHints == null ? "" : questionHints.trim();
     }
 
     public Collection<CodeNode> nodes() {

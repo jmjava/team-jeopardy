@@ -10,8 +10,10 @@ import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Controller;
 
 /**
- * Bidirectional STOMP channel for worldwide team play.
- * Clients send actions to /app/room/{roomId}/action and subscribe to /topic/room.{roomId}.
+ * Bidirectional STOMP channel.
+ * Clients send actions to /app/room/{roomId}/action.
+ * Public/shared displays subscribe to /topic/room.{roomId}.
+ * Moderator consoles also subscribe to /topic/room.{roomId}.host for full clue text.
  */
 @Controller
 public class GameWsController {
@@ -26,8 +28,15 @@ public class GameWsController {
 
     @MessageMapping("/room/{roomId}/action")
     public void handleAction(@DestinationVariable String roomId, @Payload GameAction action) {
-        GameSnapshot snapshot = gameRoomService.applyAction(roomId, action);
-        messagingTemplate.convertAndSend("/topic/room." + snapshot.roomId(), snapshot);
-        messagingTemplate.convertAndSend("/topic/room-code." + snapshot.code(), snapshot);
+        gameRoomService.applyAction(roomId, action);
+        broadcast(roomId);
+    }
+
+    private void broadcast(String roomId) {
+        GameSnapshot pub = gameRoomService.publicSnapshot(roomId);
+        GameSnapshot host = gameRoomService.hostSnapshot(roomId);
+        messagingTemplate.convertAndSend("/topic/room." + pub.roomId(), pub);
+        messagingTemplate.convertAndSend("/topic/room-code." + pub.code(), pub);
+        messagingTemplate.convertAndSend("/topic/room." + host.roomId() + ".host", host);
     }
 }

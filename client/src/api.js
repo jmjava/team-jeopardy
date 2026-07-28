@@ -42,11 +42,27 @@ export function ingestBoard(payload) {
   })
 }
 
+export function browseGithub({ repo, ref, path, recursive }) {
+  return request('/api/github/browse', {
+    method: 'POST',
+    body: JSON.stringify({ repo, ref, path, recursive })
+  })
+}
+
 export function postAction(roomId, { playerId, type, payload }) {
   return request(`/api/rooms/${roomId}/actions`, {
     method: 'POST',
     body: JSON.stringify({ playerId, type, payload })
   })
+}
+
+export function getRoom(roomId, playerId) {
+  const q = playerId ? `?playerId=${encodeURIComponent(playerId)}` : ''
+  return request(`/api/rooms/${roomId}${q}`)
+}
+
+export function getRoomByCode(code) {
+  return request(`/api/rooms/code/${encodeURIComponent(code)}`)
 }
 
 export function getHealth() {

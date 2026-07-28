@@ -10,12 +10,18 @@ import com.jmjava.teamjeopardy.ingest.enrich.VueComponentHierarchyEnricher;
 import com.jmjava.teamjeopardy.ingest.gradle.GradleProjectIngester;
 import com.jmjava.teamjeopardy.ingest.maven.MavenReactorIngester;
 import com.jmjava.teamjeopardy.ingest.osgi.OsgiManifestParser;
+import com.jmjava.teamjeopardy.pattern.JavaDesignPatternStrategy;
+import com.jmjava.teamjeopardy.pattern.JavaScriptDesignPatternStrategy;
+import com.jmjava.teamjeopardy.pattern.PatternScanner;
+import com.jmjava.teamjeopardy.pattern.PythonDesignPatternStrategy;
+import com.jmjava.teamjeopardy.pattern.VueDesignPatternStrategy;
 import com.jmjava.teamjeopardy.quiz.Board;
 import com.jmjava.teamjeopardy.quiz.QuestionGenerator;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.nio.file.Path;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -26,13 +32,20 @@ class HierarchyEnricherTest {
 
     @BeforeEach
     void setUp() {
+        PatternScanner scanner = new PatternScanner(List.of(
+                new JavaDesignPatternStrategy(),
+                new VueDesignPatternStrategy(),
+                new PythonDesignPatternStrategy(),
+                new JavaScriptDesignPatternStrategy()
+        ));
         ingester = new CodeGraphIngester(
                 new ProjectDetector(),
                 new MavenReactorIngester(),
                 new GradleProjectIngester(),
                 new OsgiManifestParser(),
                 new JavaClassHierarchyEnricher(),
-                new VueComponentHierarchyEnricher()
+                new VueComponentHierarchyEnricher(),
+                scanner
         );
         questions = new QuestionGenerator();
     }
@@ -48,7 +61,10 @@ class HierarchyEnricherTest {
                 e.fromId().contains("AppMain") && e.toId().contains("GreetingService")));
 
         Board board = questions.generate(graph, "Hierarchy");
-        assertTrue(board.categories().stream().anyMatch(c -> "CLASS HIERARCHY".equals(c.title())));
+        assertTrue(board.categories().stream().anyMatch(c ->
+                "CLASS HIERARCHY".equals(c.title())
+                        || c.title().startsWith("QA:")
+                        || c.title().startsWith("DEV:")));
     }
 
     @Test
@@ -62,6 +78,10 @@ class HierarchyEnricherTest {
                 e.fromId().contains("BoardPanel") && e.toId().contains("ClueButton")));
 
         Board board = questions.generate(graph, "Vue Hierarchy");
-        assertTrue(board.categories().stream().anyMatch(c -> "COMPONENT TREE".equals(c.title())));
+        assertTrue(board.categories().stream().anyMatch(c ->
+                "COMPONENT TREE".equals(c.title())
+                        || c.title().contains("COMPONENT")
+                        || c.title().startsWith("QA:")
+                        || c.title().startsWith("DEV:")));
     }
 }

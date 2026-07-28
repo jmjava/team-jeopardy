@@ -24,6 +24,7 @@ public class GameRoom {
     private final Map<String, Team> teams = new LinkedHashMap<>();
     private final Map<String, Player> players = new LinkedHashMap<>();
     private final Map<String, BoardCellState> cells = new LinkedHashMap<>();
+    private String questionHints = "";
     private int revision;
 
     public GameRoom(String id, String code, String hostPlayerId, String title) {
@@ -99,8 +100,13 @@ public class GameRoom {
     }
 
     public void installBoard(Board newBoard) {
+        installBoard(newBoard, this.questionHints);
+    }
+
+    public void installBoard(Board newBoard, String hints) {
         this.board = newBoard;
         this.title = newBoard.title();
+        this.questionHints = hints == null ? "" : hints.trim();
         this.cells.clear();
         for (Category category : newBoard.categories()) {
             for (Clue clue : category.clues()) {
@@ -116,6 +122,10 @@ public class GameRoom {
         this.activeClue = null;
         this.phase = GamePhase.LOBBY;
         bumpRevision();
+    }
+
+    public String getQuestionHints() {
+        return questionHints;
     }
 
     public Optional<Clue> findClue(String clueId) {
@@ -143,10 +153,25 @@ public class GameRoom {
         return !cells.isEmpty() && cells.values().stream().allMatch(BoardCellState::answered);
     }
 
+    /** Full snapshot for the moderator (includes answers while previewing). */
+    public GameSnapshot hostSnapshot() {
+        return buildSnapshot(board, activeClue);
+    }
+
+    /**
+     * Public/shared snapshot: answers redacted until revealed; during host preview
+     * players only see category + dollar value (no prompt).
+     */
+    public GameSnapshot publicSnapshot() {
+        return buildSnapshot(redactBoard(board), redactActiveClue(activeClue, phase));
+    }
+
+    /** @deprecated prefer {@link #hostSnapshot()} / {@link #publicSnapshot()} */
     public GameSnapshot snapshot() {
-        List<Team> teamList = new ArrayList<>(teams.values());
-        List<Player> playerList = new ArrayList<>(players.values());
-        List<BoardCellState> cellList = new ArrayList<>(cells.values());
+        return hostSnapshot();
+    }
+
+    private GameSnapshot buildSnapshot(Board boardView, ActiveClue clueView) {
         return new GameSnapshot(
                 id,
                 code,
@@ -155,11 +180,49 @@ public class GameRoom {
                 hostPlayerId,
                 revision,
                 createdAt,
-                board,
-                activeClue,
-                teamList,
-                playerList,
-                cellList
+                boardView,
+                clueView,
+                new ArrayList<>(teams.values()),
+                new ArrayList<>(players.values()),
+                new ArrayList<>(cells.values()),
+                questionHints
         );
+    }
+
+    private static Board redactBoard(Board source) {
+        if (source == null) {
+            return null;
+        }
+        List<Category> cats = source.categories().stream()
+                .map(cat -> new Category(
+                        cat.id(),
+                        cat.title(),
+                        cat.clues().stream()
+                                .map(c -> new Clue(
+                                        c.id(),
+                                        c.value(),
+                                        null,
+                                        null,
+                                        null,
+                                        null,
+                                        c.dailyDouble()
+                                ))
+                                .toList()
+                ))
+                .toList();
+        return new Board(source.title(), source.sourceRoot(), cats, source.graphDigest());
+    }
+
+    private static ActiveClue redactActiveClue(ActiveClue clue, GamePhase phase) {
+        if (clue == null) {
+            return null;
+        }
+        if (phase == GamePhase.HOST_PREVIEW) {
+            return clue.asHostPreviewTeaser();
+        }
+        if (clue.responseVisible()) {
+            return clue;
+        }
+        return clue.withoutAnswer();
     }
 }

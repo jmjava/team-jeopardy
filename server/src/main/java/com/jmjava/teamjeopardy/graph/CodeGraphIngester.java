@@ -8,6 +8,7 @@ import com.jmjava.teamjeopardy.ingest.enrich.VueComponentHierarchyEnricher;
 import com.jmjava.teamjeopardy.ingest.gradle.GradleProjectIngester;
 import com.jmjava.teamjeopardy.ingest.maven.MavenReactorIngester;
 import com.jmjava.teamjeopardy.ingest.osgi.OsgiManifestParser;
+import com.jmjava.teamjeopardy.pattern.PatternScanner;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -89,6 +90,7 @@ public class CodeGraphIngester {
     private final GradleProjectIngester gradleProjectIngester;
     private final OsgiManifestParser osgiManifestParser;
     private final List<GraphEnricher> enrichers;
+    private final PatternScanner patternScanner;
 
     public CodeGraphIngester(
             ProjectDetector projectDetector,
@@ -96,13 +98,15 @@ public class CodeGraphIngester {
             GradleProjectIngester gradleProjectIngester,
             OsgiManifestParser osgiManifestParser,
             JavaClassHierarchyEnricher javaClassHierarchyEnricher,
-            VueComponentHierarchyEnricher vueComponentHierarchyEnricher
+            VueComponentHierarchyEnricher vueComponentHierarchyEnricher,
+            PatternScanner patternScanner
     ) {
         this.projectDetector = projectDetector;
         this.mavenReactorIngester = mavenReactorIngester;
         this.gradleProjectIngester = gradleProjectIngester;
         this.osgiManifestParser = osgiManifestParser;
         this.enrichers = List.of(javaClassHierarchyEnricher, vueComponentHierarchyEnricher);
+        this.patternScanner = patternScanner;
     }
 
     public CodeGraph ingest(Path root) throws IOException {
@@ -189,6 +193,10 @@ public class CodeGraphIngester {
             int edges = enricher.enrich(graph, absolute);
             log.info("Enricher {} added {} edges", enricher.name(), edges);
         }
+
+        // Software design / architecture pattern strategies (GoF, Spring, Vue)
+        int patterns = patternScanner.scan(graph).size();
+        log.info("Pattern scanner emitted {} design-pattern facts", patterns);
 
         return graph;
     }

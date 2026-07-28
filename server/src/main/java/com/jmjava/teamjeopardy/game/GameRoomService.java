@@ -47,11 +47,11 @@ public class GameRoomService {
         String hostId = UUID.randomUUID().toString();
         String effectiveHost = blankTo(hostName, "Host");
         GameRoom room = new GameRoom(roomId, code, hostId, blankTo(title, "Team Jeopardy"));
-        room.getPlayers().put(hostId, new Player(hostId, effectiveHost, null, true, null));
+        room.getPlayers().put(hostId, new Player(hostId, effectiveHost, null, true, true, null));
         roomsById.put(roomId, room);
         roomIdByCode.put(code, roomId);
         room.bumpRevision();
-        return new CreateRoomResult(room.snapshot(), hostId, effectiveHost);
+        return new CreateRoomResult(room.hostSnapshot(), hostId, effectiveHost);
     }
 
     public JoinResult joinRoom(String code, String displayName, String teamName) {
@@ -74,16 +74,46 @@ public class GameRoomService {
         } else {
             teamId = null;
         }
-        room.getPlayers().put(playerId, new Player(playerId, name, teamId, false, null));
+        // Players wait in lobby until the moderator admits them.
+        room.getPlayers().put(playerId, new Player(playerId, name, teamId, false, false, null));
         room.bumpRevision();
-        return new JoinResult(room.snapshot(), playerId);
+        return new JoinResult(room.publicSnapshot(), playerId);
     }
 
     public GameSnapshot installBoard(String roomId, String playerId, Board board) {
+        return installBoard(roomId, playerId, board, null);
+    }
+
+    public GameSnapshot installBoard(String roomId, String playerId, Board board, String questionHints) {
         GameRoom room = requireById(roomId);
         requireHost(room, playerId);
-        room.installBoard(board);
-        return room.snapshot();
+        room.installBoard(board, questionHints);
+        return snapshotFor(room, playerId);
+    }
+
+    public GameSnapshot admitPlayer(String roomId, String hostPlayerId, String targetPlayerId) {
+        GameRoom room = requireById(roomId);
+        requireHost(room, hostPlayerId);
+        Player target = Optional.ofNullable(room.getPlayers().get(targetPlayerId))
+                .orElseThrow(() -> notFound("Unknown player"));
+        if (target.host()) {
+            throw conflict("Host is already in the room");
+        }
+        room.getPlayers().put(targetPlayerId, target.withAdmitted(true));
+        room.bumpRevision();
+        return room.hostSnapshot();
+    }
+
+    public GameSnapshot admitAll(String roomId, String hostPlayerId) {
+        GameRoom room = requireById(roomId);
+        requireHost(room, hostPlayerId);
+        for (Player player : List.copyOf(room.getPlayers().values())) {
+            if (!player.host() && !player.admitted()) {
+                room.getPlayers().put(player.id(), player.withAdmitted(true));
+            }
+        }
+        room.bumpRevision();
+        return room.hostSnapshot();
     }
 
     public GameSnapshot startGame(String roomId, String playerId) {
@@ -92,13 +122,16 @@ public class GameRoomService {
         if (room.getBoard() == null) {
             throw conflict("Ingest a codebase and generate a board before starting");
         }
-        if (room.getTeams().isEmpty()) {
-            throw conflict("At least one team must join before starting");
+        long admittedPlayers = room.getPlayers().values().stream()
+                .filter(p -> !p.host() && p.admitted() && p.teamId() != null)
+                .count();
+        if (admittedPlayers == 0) {
+            throw conflict("Admit at least one teamed player before starting");
         }
         room.setPhase(GamePhase.BOARD);
         room.setActiveClue(null);
         room.bumpRevision();
-        return room.snapshot();
+        return room.hostSnapshot();
     }
 
     public GameSnapshot selectClue(String roomId, String playerId, String clueId) {
@@ -128,13 +161,26 @@ public class GameRoomService {
                 clue.sourcePath(),
                 clue.dailyDouble(),
                 false,
-                null,
-                null,
-                null
+                null, null, null, null, null
         ));
+        // Host reads first; players see only a teaser until OPEN_BUZZERS.
+        room.setPhase(GamePhase.HOST_PREVIEW);
+        room.bumpRevision();
+        return room.hostSnapshot();
+    }
+
+    public GameSnapshot openBuzzers(String roomId, String hostPlayerId) {
+        GameRoom room = requireById(roomId);
+        requireHost(room, hostPlayerId);
+        if (room.getPhase() != GamePhase.HOST_PREVIEW) {
+            throw conflict("Buzzers can only open after the host preview");
+        }
+        if (room.getActiveClue() == null) {
+            throw conflict("No active clue");
+        }
         room.setPhase(GamePhase.CLUE_OPEN);
         room.bumpRevision();
-        return room.snapshot();
+        return room.hostSnapshot();
     }
 
     public GameSnapshot buzz(String roomId, String playerId) {
@@ -144,8 +190,11 @@ public class GameRoomService {
         }
         Player player = Optional.ofNullable(room.getPlayers().get(playerId))
                 .orElseThrow(() -> notFound("Unknown player"));
+        if (player.host() || !player.admitted()) {
+            throw conflict("Only admitted players can buzz");
+        }
         if (player.teamId() == null) {
-            throw conflict("Spectators/host cannot buzz; join a team");
+            throw conflict("Join a team before buzzing");
         }
         ActiveClue active = room.getActiveClue();
         if (active == null) {
@@ -154,6 +203,7 @@ public class GameRoomService {
         if (active.buzzedPlayerId() != null) {
             throw conflict("Another player already buzzed in");
         }
+        Team team = room.getTeams().get(player.teamId());
         room.setActiveClue(new ActiveClue(
                 active.clueId(),
                 active.categoryId(),
@@ -167,11 +217,13 @@ public class GameRoomService {
                 false,
                 player.id(),
                 player.displayName(),
-                player.teamId()
+                player.teamId(),
+                team == null ? null : team.name(),
+                team == null ? null : team.color()
         ));
         room.setPhase(GamePhase.BUZZ_LOCKED);
         room.bumpRevision();
-        return room.snapshot();
+        return snapshotFor(room, playerId);
     }
 
     public GameSnapshot judge(String roomId, String hostPlayerId, boolean correct) {
@@ -197,7 +249,6 @@ public class GameRoomService {
             room.setActiveClue(withResponseVisible(active, true));
             room.setPhase(GamePhase.ANSWER_REVEALED);
         } else {
-            // reopen buzzing for others
             room.setActiveClue(new ActiveClue(
                     active.clueId(),
                     active.categoryId(),
@@ -209,14 +260,12 @@ public class GameRoomService {
                     active.sourcePath(),
                     active.dailyDouble(),
                     false,
-                    null,
-                    null,
-                    null
+                    null, null, null, null, null
             ));
             room.setPhase(GamePhase.CLUE_OPEN);
         }
         room.bumpRevision();
-        return room.snapshot();
+        return room.hostSnapshot();
     }
 
     public GameSnapshot revealAnswer(String roomId, String hostPlayerId) {
@@ -230,7 +279,7 @@ public class GameRoomService {
         room.setActiveClue(withResponseVisible(active, true));
         room.setPhase(GamePhase.ANSWER_REVEALED);
         room.bumpRevision();
-        return room.snapshot();
+        return room.hostSnapshot();
     }
 
     public GameSnapshot returnToBoard(String roomId, String hostPlayerId) {
@@ -243,7 +292,7 @@ public class GameRoomService {
             room.setPhase(GamePhase.BOARD);
         }
         room.bumpRevision();
-        return room.snapshot();
+        return room.hostSnapshot();
     }
 
     public GameSnapshot createTeam(String roomId, String playerId, String teamName) {
@@ -251,11 +300,9 @@ public class GameRoomService {
         Player player = Optional.ofNullable(room.getPlayers().get(playerId))
                 .orElseThrow(() -> notFound("Unknown player"));
         Team team = ensureTeam(room, blankTo(teamName, "Team"));
-        room.getPlayers().put(playerId, new Player(
-                player.id(), player.displayName(), team.id(), player.host(), player.sessionId()
-        ));
+        room.getPlayers().put(playerId, player.withTeam(team.id()));
         room.bumpRevision();
-        return room.snapshot();
+        return snapshotFor(room, playerId);
     }
 
     public Optional<GameSnapshot> findByCode(String code) {
@@ -263,11 +310,15 @@ public class GameRoomService {
         if (roomId == null) {
             return Optional.empty();
         }
-        return Optional.ofNullable(roomsById.get(roomId)).map(GameRoom::snapshot);
+        return Optional.ofNullable(roomsById.get(roomId)).map(GameRoom::publicSnapshot);
     }
 
     public GameSnapshot requireSnapshot(String roomId) {
-        return requireById(roomId).snapshot();
+        return requireById(roomId).publicSnapshot();
+    }
+
+    public GameSnapshot requireSnapshot(String roomId, String playerId) {
+        return snapshotFor(requireById(roomId), playerId);
     }
 
     public GameSnapshot applyAction(String roomId, GameAction action) {
@@ -277,14 +328,32 @@ public class GameRoomService {
         return switch (type) {
             case "START" -> startGame(roomId, playerId);
             case "SELECT_CLUE" -> selectClue(roomId, playerId, stringPayload(payload, "clueId"));
+            case "OPEN_BUZZERS", "SHOW_CLUE" -> openBuzzers(roomId, playerId);
             case "BUZZ" -> buzz(roomId, playerId);
             case "JUDGE" -> judge(roomId, playerId, boolPayload(payload, "correct", false));
             case "REVEAL" -> revealAnswer(roomId, playerId);
             case "RETURN_BOARD" -> returnToBoard(roomId, playerId);
+            case "ADMIT_PLAYER" -> admitPlayer(roomId, playerId, stringPayload(payload, "playerId"));
+            case "ADMIT_ALL" -> admitAll(roomId, playerId);
             case "CREATE_TEAM" -> createTeam(roomId, playerId, stringPayload(payload, "teamName"));
-            case "SYNC" -> requireSnapshot(roomId);
+            case "SYNC" -> requireSnapshot(roomId, playerId);
             default -> throw conflict("Unknown action: " + type);
         };
+    }
+
+    public GameSnapshot publicSnapshot(String roomId) {
+        return requireById(roomId).publicSnapshot();
+    }
+
+    public GameSnapshot hostSnapshot(String roomId) {
+        return requireById(roomId).hostSnapshot();
+    }
+
+    private GameSnapshot snapshotFor(GameRoom room, String playerId) {
+        if (playerId != null && playerId.equals(room.getHostPlayerId())) {
+            return room.hostSnapshot();
+        }
+        return room.publicSnapshot();
     }
 
     private void markAnswered(GameRoom room, String clueId) {
@@ -310,7 +379,9 @@ public class GameRoomService {
                 visible,
                 active.buzzedPlayerId(),
                 active.buzzedPlayerName(),
-                active.buzzedTeamId()
+                active.buzzedTeamId(),
+                active.buzzedTeamName(),
+                active.buzzedTeamColor()
         );
     }
 
