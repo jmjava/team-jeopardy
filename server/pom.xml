@@ -15,11 +15,10 @@
     <artifactId>team-jeopardy-server</artifactId>
     <version>0.1.0-SNAPSHOT</version>
     <name>team-jeopardy-server</name>
-    <description>Realtime multiplayer Jeopardy fed by skgraph code ingest</description>
+    <description>Realtime multiplayer Jeopardy with in-repo skgraph-derived ingest (Maven/Gradle/Vue)</description>
 
     <properties>
         <java.version>21</java.version>
-        <skgraph.version>0.1.0-SNAPSHOT</skgraph.version>
     </properties>
 
     <dependencies>
@@ -38,22 +37,6 @@
         <dependency>
             <groupId>com.fasterxml.jackson.datatype</groupId>
             <artifactId>jackson-datatype-jsr310</artifactId>
-        </dependency>
-        <!-- Private jmjava/skgraph core: Maven/OSGi/Java AST ingest + propositions -->
-        <dependency>
-            <groupId>com.skgraph</groupId>
-            <artifactId>skgraph-core</artifactId>
-            <version>${skgraph.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>org.jetbrains.kotlin</groupId>
-            <artifactId>kotlin-stdlib</artifactId>
-            <version>2.2.0</version>
-        </dependency>
-        <dependency>
-            <groupId>org.jetbrains.kotlin</groupId>
-            <artifactId>kotlin-reflect</artifactId>
-            <version>2.2.0</version>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>

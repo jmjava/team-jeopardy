@@ -1,40 +1,39 @@
 package com.jmjava.teamjeopardy.api;
 
+import com.jmjava.teamjeopardy.graph.CodeEdge;
 import com.jmjava.teamjeopardy.graph.CodeGraph;
 import com.jmjava.teamjeopardy.graph.CodeGraphIngester;
+import com.jmjava.teamjeopardy.graph.CodeNode;
+import com.jmjava.teamjeopardy.graph.ProjectKind;
 import com.jmjava.teamjeopardy.quiz.Board;
 import com.jmjava.teamjeopardy.quiz.QuestionGenerator;
-import com.jmjava.teamjeopardy.skgraph.SkgraphIngestService;
-import com.jmjava.teamjeopardy.skgraph.SkgraphQuestionGenerator;
-import com.skgraph.model.IngestResult;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * Prefers skgraph Maven-reactor ingest; falls back to the lightweight
- * multi-language walker when no pom.xml is present.
+ * Builds Jeopardy boards from in-repo ingest (skgraph-derived Maven/OSGi + Gradle + Vue).
  */
 @Service
 public class BoardFactory {
 
-    private final SkgraphIngestService skgraphIngestService;
-    private final SkgraphQuestionGenerator skgraphQuestionGenerator;
     private final CodeGraphIngester codeGraphIngester;
     private final QuestionGenerator questionGenerator;
 
-    public BoardFactory(
-            SkgraphIngestService skgraphIngestService,
-            SkgraphQuestionGenerator skgraphQuestionGenerator,
-            CodeGraphIngester codeGraphIngester,
-            QuestionGenerator questionGenerator
-    ) {
-        this.skgraphIngestService = skgraphIngestService;
-        this.skgraphQuestionGenerator = skgraphQuestionGenerator;
+    @Value("${team-jeopardy.sample-code-path}")
+    private String sampleMavenPath;
+
+    @Value("${team-jeopardy.sample-gradle-path:../samples/sample-gradle}")
+    private String sampleGradlePath;
+
+    @Value("${team-jeopardy.sample-vue-path:../samples/sample-vue}")
+    private String sampleVuePath;
+
+    public BoardFactory(CodeGraphIngester codeGraphIngester, QuestionGenerator questionGenerator) {
         this.codeGraphIngester = codeGraphIngester;
         this.questionGenerator = questionGenerator;
     }
@@ -42,48 +41,49 @@ public class BoardFactory {
     public record BuiltBoard(Board board, Map<String, Object> summary) {
     }
 
-    public BuiltBoard fromSample(String boardTitle) {
-        IngestResult result = skgraphIngestService.ingestSample();
-        Board board = skgraphQuestionGenerator.generate(result, boardTitle);
-        return new BuiltBoard(board, skgraphSummary(result, board));
+    public BuiltBoard fromSample(String sampleType, String boardTitle) throws IOException {
+        ProjectKind kind = ProjectKind.fromSampleType(sampleType);
+        Path path = switch (kind) {
+            case GRADLE -> Path.of(sampleGradlePath);
+            case VUE, NPM -> Path.of(sampleVuePath);
+            default -> Path.of(sampleMavenPath);
+        };
+        return fromPath(path, boardTitle, kind);
     }
 
-    public BuiltBoard fromPath(
-            Path path,
-            String repo,
-            String branch,
-            String commitSha,
-            String boardTitle
-    ) throws IOException {
-        Path absolute = path.toAbsolutePath().normalize();
-        if (Files.exists(absolute.resolve("pom.xml"))) {
-            IngestResult result = skgraphIngestService.ingestPath(absolute, repo, branch, commitSha);
-            Board board = skgraphQuestionGenerator.generate(result, boardTitle);
-            return new BuiltBoard(board, skgraphSummary(result, board));
-        }
+    public BuiltBoard fromPath(Path path, String boardTitle) throws IOException {
+        return fromPath(path, boardTitle, null);
+    }
 
-        CodeGraph graph = codeGraphIngester.ingest(absolute);
+    public BuiltBoard fromPath(Path path, String boardTitle, ProjectKind forcedKind) throws IOException {
+        CodeGraph graph = codeGraphIngester.ingest(path, forcedKind);
         Board board = questionGenerator.generate(graph, boardTitle);
+        return new BuiltBoard(board, summary(graph, board));
+    }
+
+    public Map<String, String> samplePaths() {
+        Map<String, String> paths = new LinkedHashMap<>();
+        paths.put("maven", Path.of(sampleMavenPath).toAbsolutePath().normalize().toString());
+        paths.put("gradle", Path.of(sampleGradlePath).toAbsolutePath().normalize().toString());
+        paths.put("vue", Path.of(sampleVuePath).toAbsolutePath().normalize().toString());
+        return paths;
+    }
+
+    private Map<String, Object> summary(CodeGraph graph, Board board) {
         Map<String, Object> summary = new LinkedHashMap<>();
-        summary.put("engine", "lightweight-code-graph");
+        summary.put("engine", "team-jeopardy-ingest");
+        summary.put("derivedFrom", "jmjava/skgraph (Maven/OSGi extract) + Gradle/Vue extensions");
+        summary.put("projectKind", graph.getProjectKind().name());
+        summary.put("projectName", graph.getProjectName());
         summary.put("rootPath", graph.getRootPath());
         summary.put("nodes", graph.stats().nodeCount());
         summary.put("edges", graph.stats().edgeCount());
-        summary.put("categories", board.categories().size());
-        return new BuiltBoard(board, summary);
-    }
-
-    private Map<String, Object> skgraphSummary(IngestResult result, Board board) {
-        Map<String, Object> summary = new LinkedHashMap<>();
-        summary.put("engine", "skgraph-core");
-        summary.put("repo", result.getContext().getRepo());
-        summary.put("branch", result.getContext().getBranch());
-        summary.put("rootPath", result.getContext().getRootPath());
-        summary.put("modules", result.getReactor().getModules().size());
-        summary.put("edges", result.getEdges().size());
-        summary.put("propositions", result.getPropositions().size());
-        summary.put("javaFiles", result.getJava() == null ? 0 : result.getJava().getFiles().size());
-        summary.put("osgiBundles", result.getOsgi() == null ? 0 : result.getOsgi().getBundles().size());
+        summary.put("modules", graph.nodesOfKind(CodeNode.NodeKind.MODULE).size());
+        summary.put("dependencies", graph.nodesOfKind(CodeNode.NodeKind.DEPENDENCY).size());
+        summary.put("components", graph.nodesOfKind(CodeNode.NodeKind.COMPONENT).size());
+        summary.put("extendsEdges", graph.edgesOf(CodeEdge.Relation.EXTENDS).size());
+        summary.put("implementsEdges", graph.edgesOf(CodeEdge.Relation.IMPLEMENTS).size());
+        summary.put("vueUsesEdges", graph.edgesOf(CodeEdge.Relation.USES).size());
         summary.put("categories", board.categories().size());
         return summary;
     }

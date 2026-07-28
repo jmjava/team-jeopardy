@@ -119,7 +119,7 @@ async function runAction(type, payload = {}) {
   }
 }
 
-async function onIngest() {
+async function onIngest(sampleType = 'maven') {
   error.value = ''
   busy.value = true
   try {
@@ -127,7 +127,8 @@ async function onIngest() {
       roomId: session.roomId,
       playerId: session.playerId,
       useSample: true,
-      boardTitle: snapshot.value?.title || 'skgraph Team Jeopardy'
+      sampleType,
+      boardTitle: snapshot.value?.title || `${sampleType} Team Jeopardy`
     })
     snapshot.value = result.snapshot
     ingestSummary.value = result.ingestSummary
@@ -155,7 +156,7 @@ onBeforeUnmount(() => socket?.disconnect())
   <div class="shell">
     <header class="top">
       <div>
-        <p class="eyebrow">skgraph → live board</p>
+        <p class="eyebrow">Maven · Gradle · Vue → live board</p>
         <h1 class="brand">Team Jeopardy</h1>
       </div>
       <div class="meta" v-if="session.code">
@@ -191,12 +192,18 @@ onBeforeUnmount(() => socket?.disconnect())
         <div>
           <h2>Host lobby</h2>
           <p class="muted">
-            Ingest the skgraph sample reactor (or any Maven reactor path on the server)
-            to generate categories from modules, dependencies, Java AST, propositions, and OSGi.
+            Ingest a sample (or any path on the server). Maven/OSGi parsing is extracted from
+            skgraph; Gradle multi-projects and Vue SFCs use the same in-repo graph.
           </p>
           <div class="actions">
-            <button v-if="session.isHost" :disabled="busy" @click="onIngest">
-              {{ busy ? 'Ingesting…' : 'Ingest sample-reactor via skgraph' }}
+            <button v-if="session.isHost" :disabled="busy" @click="onIngest('maven')">
+              {{ busy ? 'Ingesting…' : 'Ingest Maven sample' }}
+            </button>
+            <button v-if="session.isHost" class="secondary" :disabled="busy" @click="onIngest('gradle')">
+              Ingest Gradle sample
+            </button>
+            <button v-if="session.isHost" class="secondary" :disabled="busy" @click="onIngest('vue')">
+              Ingest Vue sample
             </button>
             <button
               v-if="session.isHost && snapshot?.board"

@@ -1,5 +1,13 @@
 package com.jmjava.teamjeopardy.graph;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.jmjava.teamjeopardy.ingest.enrich.GraphEnricher;
+import com.jmjava.teamjeopardy.ingest.enrich.JavaClassHierarchyEnricher;
+import com.jmjava.teamjeopardy.ingest.enrich.VueComponentHierarchyEnricher;
+import com.jmjava.teamjeopardy.ingest.gradle.GradleProjectIngester;
+import com.jmjava.teamjeopardy.ingest.maven.MavenReactorIngester;
+import com.jmjava.teamjeopardy.ingest.osgi.OsgiManifestParser;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -9,15 +17,18 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 /**
  * Walks a source tree and builds a code graph using language-aware heuristics.
- * This is intentionally dependency-light so demos run without external graph DBs.
+ * Maven reactor / OSGi pieces are extracted from jmjava/skgraph; Gradle and Vue
+ * extend the same in-repo model so no private dependency is required.
  */
 @Service
 public class CodeGraphIngester {
@@ -25,7 +36,8 @@ public class CodeGraphIngester {
     private static final Logger log = LoggerFactory.getLogger(CodeGraphIngester.class);
 
     private static final List<String> SKIP_DIRS = List.of(
-            ".git", "node_modules", "target", "build", "dist", ".idea", ".vscode", "__pycache__"
+            ".git", "node_modules", "target", "build", "dist", ".idea", ".vscode",
+            "__pycache__", ".nuxt", ".output", ".gradle"
     );
 
     private static final Pattern JAVA_PACKAGE = Pattern.compile("^\\s*package\\s+([\\w.]+)\\s*;", Pattern.MULTILINE);
@@ -43,19 +55,96 @@ public class CodeGraphIngester {
             "import\\s+(?:.+?\\s+from\\s+)?['\"]([^'\"]+)['\"]",
             Pattern.MULTILINE);
     private static final Pattern JS_CLASS = Pattern.compile("(?:export\\s+)?class\\s+(\\w+)", Pattern.MULTILINE);
+    private static final Pattern JS_EXPORT_DEFAULT = Pattern.compile(
+            "export\\s+default\\s+(?:defineComponent\\s*\\(|\\{)",
+            Pattern.MULTILINE);
+    private static final Pattern VUE_SCRIPT = Pattern.compile(
+            "<script\\b([^>]*)>([\\s\\S]*?)</script>",
+            Pattern.CASE_INSENSITIVE);
+    private static final Pattern VUE_TEMPLATE = Pattern.compile(
+            "<template\\b([^>]*)>([\\s\\S]*?)</template>",
+            Pattern.CASE_INSENSITIVE);
+    private static final Pattern VUE_STYLE = Pattern.compile(
+            "<style\\b([^>]*)>([\\s\\S]*?)</style>",
+            Pattern.CASE_INSENSITIVE);
+    private static final Pattern VUE_COMPONENT_TAG = Pattern.compile(
+            "<([A-Z][\\w-]*)\\b",
+            Pattern.MULTILINE);
+    private static final Pattern VUE_PROPS = Pattern.compile(
+            "(?:defineProps\\s*\\(|props\\s*:)\\s*(\\{[\\s\\S]*?\\}|\\[[\\s\\S]*?\\])",
+            Pattern.MULTILINE);
+    private static final Pattern VUE_EMITS = Pattern.compile(
+            "(?:defineEmits\\s*\\(|emits\\s*:)\\s*(\\[[\\s\\S]*?\\]|\\{[\\s\\S]*?\\})",
+            Pattern.MULTILINE);
+    private static final Pattern ROUTE_PATH = Pattern.compile(
+            "path\\s*:\\s*['\"]([^'\"]+)['\"]",
+            Pattern.MULTILINE);
     private static final Pattern PY_DEF = Pattern.compile("^\\s*(?:async\\s+)?def\\s+(\\w+)\\s*\\(([^)]*)\\)", Pattern.MULTILINE);
     private static final Pattern PY_CLASS = Pattern.compile("^\\s*class\\s+(\\w+)\\s*(?:\\(([^)]*)\\))?:", Pattern.MULTILINE);
     private static final Pattern PY_IMPORT = Pattern.compile("^(?:from\\s+([\\w.]+)\\s+import\\s+.+|import\\s+([\\w.,\\s]+))", Pattern.MULTILINE);
 
+    private final ObjectMapper mapper = new ObjectMapper();
+    private final ProjectDetector projectDetector;
+    private final MavenReactorIngester mavenReactorIngester;
+    private final GradleProjectIngester gradleProjectIngester;
+    private final OsgiManifestParser osgiManifestParser;
+    private final List<GraphEnricher> enrichers;
+
+    public CodeGraphIngester(
+            ProjectDetector projectDetector,
+            MavenReactorIngester mavenReactorIngester,
+            GradleProjectIngester gradleProjectIngester,
+            OsgiManifestParser osgiManifestParser,
+            JavaClassHierarchyEnricher javaClassHierarchyEnricher,
+            VueComponentHierarchyEnricher vueComponentHierarchyEnricher
+    ) {
+        this.projectDetector = projectDetector;
+        this.mavenReactorIngester = mavenReactorIngester;
+        this.gradleProjectIngester = gradleProjectIngester;
+        this.osgiManifestParser = osgiManifestParser;
+        this.enrichers = List.of(javaClassHierarchyEnricher, vueComponentHierarchyEnricher);
+    }
+
     public CodeGraph ingest(Path root) throws IOException {
+        return ingest(root, null);
+    }
+
+    public CodeGraph ingest(Path root, ProjectKind forcedKind) throws IOException {
         Path absolute = root.toAbsolutePath().normalize();
         if (!Files.isDirectory(absolute)) {
             throw new IllegalArgumentException("Path is not a directory: " + absolute);
         }
 
+        ProjectKind kind = forcedKind != null ? forcedKind : projectDetector.detect(absolute);
         CodeGraph graph = new CodeGraph(absolute.toString());
+        graph.setProjectKind(kind);
+
+        try {
+            // Maven / Gradle are optional adapters — skipped when those markers are absent.
+            if (kind == ProjectKind.MAVEN || Files.exists(absolute.resolve("pom.xml"))) {
+                mavenReactorIngester.ingestInto(graph, absolute);
+            }
+            if (kind == ProjectKind.GRADLE || projectDetector.hasGradleBuild(absolute)) {
+                gradleProjectIngester.ingestInto(graph, absolute);
+            }
+            // OSGi is best-effort and never required. Only scan when bundle markers exist.
+            if (osgiManifestParser.hasOsgiMarkers(absolute)) {
+                osgiManifestParser.ingestInto(graph, absolute);
+            }
+        } catch (IOException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new IOException("Project structure ingest failed: " + e.getMessage(), e);
+        }
+
+        Path packageJson = absolute.resolve("package.json");
+        if (Files.exists(packageJson)) {
+            parsePackageJson(graph, absolute.relativize(packageJson).toString().replace('\\', '/'),
+                    Files.readString(packageJson, StandardCharsets.UTF_8));
+        }
+
         List<Path> files = listSourceFiles(absolute);
-        log.info("Ingesting {} source files from {}", files.size(), absolute);
+        log.info("Ingesting {} source files from {} as {}", files.size(), absolute, kind);
 
         for (Path file : files) {
             String relative = absolute.relativize(file).toString().replace('\\', '/');
@@ -75,11 +164,30 @@ public class CodeGraphIngester {
 
             switch (language) {
                 case "java" -> parseJava(graph, fileId, relative, content);
-                case "javascript", "typescript" -> parseJsTs(graph, fileId, relative, language, content);
+                case "javascript", "typescript" -> {
+                    parseJsTs(graph, fileId, relative, language, content);
+                    if (relative.contains("router") || relative.endsWith("routes.js")
+                            || relative.endsWith("routes.ts")) {
+                        parseRoutes(graph, fileId, relative, language, content);
+                    }
+                }
+                case "vue" -> parseVue(graph, fileId, relative, content);
                 case "python" -> parsePython(graph, fileId, relative, content);
+                case "json" -> {
+                    if (relative.endsWith("package.json")) {
+                        // already handled at root; nested workspaces still parse
+                        parsePackageJson(graph, relative, content);
+                    }
+                }
                 default -> {
                 }
             }
+        }
+
+        // Structural enrichers: Java type hierarchy + Vue component composition tree
+        for (GraphEnricher enricher : enrichers) {
+            int edges = enricher.enrich(graph, absolute);
+            log.info("Enricher {} added {} edges", enricher.name(), edges);
         }
 
         return graph;
@@ -108,9 +216,13 @@ public class CodeGraphIngester {
         return name.endsWith(".java")
                 || name.endsWith(".js")
                 || name.endsWith(".jsx")
+                || name.endsWith(".mjs")
+                || name.endsWith(".cjs")
                 || name.endsWith(".ts")
                 || name.endsWith(".tsx")
-                || name.endsWith(".py");
+                || name.endsWith(".vue")
+                || name.endsWith(".py")
+                || name.equals("package.json");
     }
 
     private String languageFor(Path path) {
@@ -121,10 +233,224 @@ public class CodeGraphIngester {
         if (name.endsWith(".py")) {
             return "python";
         }
+        if (name.endsWith(".vue")) {
+            return "vue";
+        }
+        if (name.equals("package.json")) {
+            return "json";
+        }
         if (name.endsWith(".ts") || name.endsWith(".tsx")) {
             return "typescript";
         }
         return "javascript";
+    }
+
+    private void parsePackageJson(CodeGraph graph, String relative, String content) throws IOException {
+        JsonNode root = mapper.readTree(content);
+        String name = root.path("name").asText(Path.of(graph.getRootPath()).getFileName().toString());
+        if (graph.getProjectName() == null || relative.equals("package.json")) {
+            graph.setProjectName(name);
+        }
+
+        String fileId = "file:" + relative;
+        graph.addNode(new CodeNode(
+                fileId,
+                CodeNode.NodeKind.FILE,
+                "package.json",
+                relative,
+                "json",
+                relative,
+                "package " + name,
+                snippet(content, 0, 8)
+        ));
+
+        addDependencyNodes(graph, fileId, relative, root.path("dependencies"), "runtime");
+        addDependencyNodes(graph, fileId, relative, root.path("devDependencies"), "dev");
+        addDependencyNodes(graph, fileId, relative, root.path("peerDependencies"), "peer");
+
+        JsonNode scripts = root.path("scripts");
+        if (scripts.isObject()) {
+            Iterator<Map.Entry<String, JsonNode>> fields = scripts.fields();
+            while (fields.hasNext()) {
+                Map.Entry<String, JsonNode> entry = fields.next();
+                String scriptId = "script:" + relative + "#" + entry.getKey();
+                graph.addNode(new CodeNode(
+                        scriptId,
+                        CodeNode.NodeKind.SCRIPT,
+                        entry.getKey(),
+                        entry.getKey(),
+                        "npm",
+                        relative,
+                        "npm run " + entry.getKey(),
+                        entry.getValue().asText("")
+                ));
+                graph.addEdge(new CodeEdge(fileId, scriptId, CodeEdge.Relation.DEFINES));
+            }
+        }
+    }
+
+    private void addDependencyNodes(
+            CodeGraph graph,
+            String fileId,
+            String relative,
+            JsonNode deps,
+            String scope
+    ) {
+        if (deps == null || !deps.isObject()) {
+            return;
+        }
+        Iterator<Map.Entry<String, JsonNode>> fields = deps.fields();
+        while (fields.hasNext()) {
+            Map.Entry<String, JsonNode> entry = fields.next();
+            String depName = entry.getKey();
+            String version = entry.getValue().asText("");
+            String depId = "dep:" + scope + ":" + depName;
+            graph.addNode(new CodeNode(
+                    depId,
+                    CodeNode.NodeKind.DEPENDENCY,
+                    depName,
+                    depName + "@" + version,
+                    "npm",
+                    relative,
+                    scope + " " + depName + "@" + version,
+                    version
+            ));
+            graph.addEdge(new CodeEdge(fileId, depId, CodeEdge.Relation.IMPORTS));
+        }
+    }
+
+    private void parseVue(CodeGraph graph, String fileId, String relative, String content) {
+        String componentName = componentNameFromPath(relative);
+        String componentId = "component:" + relative;
+        boolean scriptSetup = false;
+        String scriptLang = "javascript";
+        StringBuilder scriptBody = new StringBuilder();
+
+        Matcher scripts = VUE_SCRIPT.matcher(content);
+        while (scripts.find()) {
+            String attrs = scripts.group(1) == null ? "" : scripts.group(1).toLowerCase(Locale.ROOT);
+            scriptSetup = scriptSetup || attrs.contains("setup");
+            if (attrs.contains("lang=\"ts\"") || attrs.contains("lang='ts'")) {
+                scriptLang = "typescript";
+            }
+            scriptBody.append(scripts.group(2)).append('\n');
+        }
+
+        boolean hasTemplate = VUE_TEMPLATE.matcher(content).find();
+        boolean hasStyle = VUE_STYLE.matcher(content).find();
+        String signature = "SFC " + componentName
+                + (scriptSetup ? " <script setup>" : "")
+                + (hasTemplate ? " +template" : "")
+                + (hasStyle ? " +style" : "");
+
+        graph.addNode(new CodeNode(
+                componentId,
+                CodeNode.NodeKind.COMPONENT,
+                componentName,
+                relative,
+                "vue",
+                relative,
+                signature,
+                snippet(content, 0, 10)
+        ));
+        graph.addEdge(new CodeEdge(fileId, componentId, CodeEdge.Relation.DEFINES));
+
+        String script = scriptBody.toString();
+        if (!script.isBlank()) {
+            parseJsTs(graph, fileId, relative, scriptLang, script);
+        }
+
+        Matcher props = VUE_PROPS.matcher(script.isBlank() ? content : script);
+        if (props.find()) {
+            String propsId = "props:" + relative;
+            graph.addNode(new CodeNode(
+                    propsId,
+                    CodeNode.NodeKind.FUNCTION,
+                    componentName + ".props",
+                    relative + "#props",
+                    "vue",
+                    relative,
+                    "props",
+                    truncate(props.group(1), 180)
+            ));
+            graph.addEdge(new CodeEdge(componentId, propsId, CodeEdge.Relation.DEFINES));
+        }
+
+        Matcher emits = VUE_EMITS.matcher(script.isBlank() ? content : script);
+        if (emits.find()) {
+            String emitsId = "emits:" + relative;
+            graph.addNode(new CodeNode(
+                    emitsId,
+                    CodeNode.NodeKind.FUNCTION,
+                    componentName + ".emits",
+                    relative + "#emits",
+                    "vue",
+                    relative,
+                    "emits",
+                    truncate(emits.group(1), 180)
+            ));
+            graph.addEdge(new CodeEdge(componentId, emitsId, CodeEdge.Relation.DEFINES));
+        }
+
+        Matcher template = VUE_TEMPLATE.matcher(content);
+        if (template.find()) {
+            String templateBody = template.group(2);
+            Matcher child = VUE_COMPONENT_TAG.matcher(templateBody);
+            while (child.find()) {
+                String childName = child.group(1);
+                if (List.of("Template", "Script", "Style", "Component", "Transition", "KeepAlive", "Suspense")
+                        .contains(childName)) {
+                    continue;
+                }
+                String childId = "component-ref:" + relative + "#" + childName;
+                graph.addNode(new CodeNode(
+                        childId,
+                        CodeNode.NodeKind.COMPONENT,
+                        childName,
+                        childName,
+                        "vue",
+                        relative,
+                        "<" + childName + ">",
+                        null
+                ));
+                graph.addEdge(new CodeEdge(componentId, childId, CodeEdge.Relation.CALLS));
+            }
+        }
+    }
+
+    private void parseRoutes(CodeGraph graph, String fileId, String relative, String language, String content) {
+        Matcher routes = ROUTE_PATH.matcher(content);
+        while (routes.find()) {
+            String path = routes.group(1);
+            String routeId = "route:" + relative + "#" + path;
+            graph.addNode(new CodeNode(
+                    routeId,
+                    CodeNode.NodeKind.ROUTE,
+                    path,
+                    path,
+                    language,
+                    relative,
+                    "path: " + path,
+                    snippet(content, lineOf(content, routes.start()), 4)
+            ));
+            graph.addEdge(new CodeEdge(fileId, routeId, CodeEdge.Relation.DEFINES));
+        }
+    }
+
+    private String componentNameFromPath(String relative) {
+        String fileName = Path.of(relative).getFileName().toString();
+        if (fileName.endsWith(".vue")) {
+            return fileName.substring(0, fileName.length() - 4);
+        }
+        return fileName;
+    }
+
+    private String truncate(String text, int max) {
+        if (text == null) {
+            return "";
+        }
+        String normalized = text.trim().replaceAll("\\s+", " ");
+        return normalized.length() <= max ? normalized : normalized.substring(0, max) + "…";
     }
 
     private void parseJava(CodeGraph graph, String fileId, String relative, String content) {

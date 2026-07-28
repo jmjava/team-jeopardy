@@ -6,6 +6,14 @@ public record CodeEdge(
         Relation relation
 ) {
     public enum Relation {
-        CONTAINS, DEFINES, CALLS, IMPORTS, EXTENDS, IMPLEMENTS, BELONGS_TO
+        CONTAINS,
+        DEFINES,
+        CALLS,
+        IMPORTS,
+        EXTENDS,
+        IMPLEMENTS,
+        BELONGS_TO,
+        /** Vue/SFC composition: parent template renders child component. */
+        USES
     }
 }

@@ -13,7 +13,19 @@ public record CodeNode(
         String snippet
 ) {
     public enum NodeKind {
-        FILE, PACKAGE, CLASS, INTERFACE, METHOD, FUNCTION, IMPORT
+        FILE,
+        PACKAGE,
+        CLASS,
+        INTERFACE,
+        METHOD,
+        FUNCTION,
+        IMPORT,
+        COMPONENT,
+        DEPENDENCY,
+        SCRIPT,
+        ROUTE,
+        MODULE,
+        PLUGIN
     }
 
     @Override

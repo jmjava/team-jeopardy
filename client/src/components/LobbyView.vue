@@ -25,12 +25,12 @@ const joinForm = reactive({
     <div class="copy">
       <h2>Code-graph Jeopardy for distributed teams</h2>
       <p>
-        Host ingests a Maven reactor through <strong>skgraph</strong>, turns modules,
-        dependencies, Java types, and propositions into a board, then everyone buzzes in
-        over a bidirectional WebSocket channel.
+        Host ingests <strong>Maven</strong>, <strong>Gradle</strong>, or <strong>Vue</strong>
+        projects into a shared code graph, auto-builds a Jeopardy board, then teammates
+        buzz in over a bidirectional WebSocket channel from anywhere.
       </p>
       <p class="muted" v-if="health">
-        Engine {{ health.engine }} · sample {{ health.samplePath }}
+        Engine {{ health.engine }} · supports {{ (health.supported || []).join(', ') }}
       </p>
     </div>
 

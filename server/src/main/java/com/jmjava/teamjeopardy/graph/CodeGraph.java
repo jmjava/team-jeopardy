@@ -16,6 +16,8 @@ import java.util.stream.Collectors;
 public class CodeGraph {
 
     private final String rootPath;
+    private ProjectKind projectKind = ProjectKind.GENERIC;
+    private String projectName;
     private final Map<String, CodeNode> nodes = new LinkedHashMap<>();
     private final List<CodeEdge> edges = new ArrayList<>();
 
@@ -25,6 +27,22 @@ public class CodeGraph {
 
     public String getRootPath() {
         return rootPath;
+    }
+
+    public ProjectKind getProjectKind() {
+        return projectKind;
+    }
+
+    public void setProjectKind(ProjectKind projectKind) {
+        this.projectKind = projectKind == null ? ProjectKind.GENERIC : projectKind;
+    }
+
+    public String getProjectName() {
+        return projectName;
+    }
+
+    public void setProjectName(String projectName) {
+        this.projectName = projectName;
     }
 
     public void addNode(CodeNode node) {

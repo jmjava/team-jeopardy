@@ -7,17 +7,13 @@ spring:
 
 team-jeopardy:
   sample-code-path: ../samples/sample-reactor
+  sample-gradle-path: ../samples/sample-gradle
+  sample-vue-path: ../samples/sample-vue
   allowed-origins: "*"
   max-teams: 6
   max-players-per-team: 8
   buzz-lock-ms: 8000
-  skgraph:
-    default-repo: sample-reactor
-    default-branch: release/7.1
-    # Optional: point at a running skgraph-api instead of in-process ingest
-    remote-base-url: ""
 
 logging:
   level:
     com.jmjava.teamjeopardy: INFO
-    com.skgraph: INFO

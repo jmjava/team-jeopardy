@@ -1,0 +1,16 @@
+Team Jeopardy
+=============
+
+This project includes ingest ideas and simplified ports derived from:
+
+  jmjava/skgraph (private)
+  https://github.com/jmjava/skgraph
+
+Specifically adapted in-repo (Java, no skgraph-core dependency):
+  - Maven POM reactor walk / dependency projection (from skgraph PomParser,
+    MavenReactorBuilder, RelaxedDependencyGraphBuilder concepts)
+  - Lightweight OSGi MANIFEST / bnd symbolic-name extraction
+    (from skgraph OsgiExtractor / ManifestParser concepts)
+
+Gradle multi-project and Vue SFC / package.json ingest are original extensions
+in this repository that share the same CodeGraph model.

@@ -4,7 +4,6 @@ import com.jmjava.teamjeopardy.game.GameAction;
 import com.jmjava.teamjeopardy.game.GameRoomService;
 import com.jmjava.teamjeopardy.game.GameSnapshot;
 import com.jmjava.teamjeopardy.quiz.Board;
-import com.jmjava.teamjeopardy.skgraph.SkgraphIngestService;
 import jakarta.validation.Valid;
 import org.springframework.http.MediaType;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
@@ -17,6 +16,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 @RestController
@@ -24,18 +24,15 @@ import java.util.Map;
 public class GameController {
 
     private final GameRoomService gameRoomService;
-    private final SkgraphIngestService skgraphIngestService;
     private final BoardFactory boardFactory;
     private final SimpMessagingTemplate messagingTemplate;
 
     public GameController(
             GameRoomService gameRoomService,
-            SkgraphIngestService skgraphIngestService,
             BoardFactory boardFactory,
             SimpMessagingTemplate messagingTemplate
     ) {
         this.gameRoomService = gameRoomService;
-        this.skgraphIngestService = skgraphIngestService;
         this.boardFactory = boardFactory;
         this.messagingTemplate = messagingTemplate;
     }
@@ -72,14 +69,8 @@ public class GameController {
     public Dto.IngestResponse ingest(@Valid @RequestBody Dto.IngestRequest request) throws IOException {
         boolean useSample = request.useSample() == null || request.useSample();
         BoardFactory.BuiltBoard built = useSample
-                ? boardFactory.fromSample(request.boardTitle())
-                : boardFactory.fromPath(
-                        Path.of(request.path()),
-                        request.repo(),
-                        request.branch(),
-                        request.commitSha(),
-                        request.boardTitle()
-                );
+                ? boardFactory.fromSample(request.sampleType(), request.boardTitle())
+                : boardFactory.fromPath(Path.of(request.path()), request.boardTitle());
 
         Board board = built.board();
         GameSnapshot snapshot = gameRoomService.installBoard(request.roomId(), request.playerId(), board);
@@ -102,11 +93,12 @@ public class GameController {
 
     @GetMapping("/health")
     public Map<String, Object> health() {
-        return Map.of(
-                "status", "ok",
-                "samplePath", skgraphIngestService.sampleCodePath(),
-                "engine", "skgraph-core"
-        );
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("status", "ok");
+        body.put("engine", "team-jeopardy-ingest");
+        body.put("supported", new String[]{"maven", "gradle", "vue", "npm", "python", "generic"});
+        body.put("samples", boardFactory.samplePaths());
+        return body;
     }
 
     private void broadcast(GameSnapshot snapshot) {

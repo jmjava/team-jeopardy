@@ -36,6 +36,10 @@ public final class Dto {
             @NotBlank String playerId,
             String path,
             Boolean useSample,
+            /**
+             * Sample/project flavor: maven | gradle | vue | npm | python
+             */
+            String sampleType,
             String repo,
             String branch,
             String commitSha,
