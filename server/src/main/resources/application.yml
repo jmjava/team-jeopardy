@@ -1,0 +1,23 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: team-jeopardy
+
+team-jeopardy:
+  sample-code-path: ../samples/sample-reactor
+  allowed-origins: "*"
+  max-teams: 6
+  max-players-per-team: 8
+  buzz-lock-ms: 8000
+  skgraph:
+    default-repo: sample-reactor
+    default-branch: release/7.1
+    # Optional: point at a running skgraph-api instead of in-process ingest
+    remote-base-url: ""
+
+logging:
+  level:
+    com.jmjava.teamjeopardy: INFO
+    com.skgraph: INFO

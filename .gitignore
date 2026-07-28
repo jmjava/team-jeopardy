@@ -1,0 +1,24 @@
+# Build
+**/target/
+**/node_modules/
+**/dist/
+.vendor/
+.m2-ci/
+
+# IDE / OS
+.idea/
+*.iml
+.vscode/
+.DS_Store
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+npm-debug.log*
+
+# Cursor / agent
+.cursor/

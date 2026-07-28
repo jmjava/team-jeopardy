@@ -1,0 +1,79 @@
+package com.jmjava.teamjeopardy.graph;
+
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.stream.Collectors;
+
+/**
+ * Lightweight in-memory code knowledge graph produced by repository ingestion.
+ * Inspired by code-graph / skgraph-style pipelines: parse sources into entities
+ * and relations, then generate quiz content from structural facts.
+ */
+public class CodeGraph {
+
+    private final String rootPath;
+    private final Map<String, CodeNode> nodes = new LinkedHashMap<>();
+    private final List<CodeEdge> edges = new ArrayList<>();
+
+    public CodeGraph(String rootPath) {
+        this.rootPath = rootPath;
+    }
+
+    public String getRootPath() {
+        return rootPath;
+    }
+
+    public void addNode(CodeNode node) {
+        nodes.putIfAbsent(node.id(), node);
+    }
+
+    public void addEdge(CodeEdge edge) {
+        edges.add(edge);
+    }
+
+    public Collection<CodeNode> nodes() {
+        return nodes.values();
+    }
+
+    public List<CodeEdge> edges() {
+        return List.copyOf(edges);
+    }
+
+    public Optional<CodeNode> findById(String id) {
+        return Optional.ofNullable(nodes.get(id));
+    }
+
+    public List<CodeNode> nodesOfKind(CodeNode.NodeKind kind) {
+        return nodes.values().stream()
+                .filter(n -> n.kind() == kind)
+                .collect(Collectors.toList());
+    }
+
+    public List<CodeEdge> edgesFrom(String nodeId) {
+        return edges.stream().filter(e -> e.fromId().equals(nodeId)).toList();
+    }
+
+    public List<CodeEdge> edgesOf(CodeEdge.Relation relation) {
+        return edges.stream().filter(e -> e.relation() == relation).toList();
+    }
+
+    public GraphStats stats() {
+        Map<CodeNode.NodeKind, Long> byKind = nodes.values().stream()
+                .collect(Collectors.groupingBy(CodeNode::kind, Collectors.counting()));
+        Map<CodeEdge.Relation, Long> byRelation = edges.stream()
+                .collect(Collectors.groupingBy(CodeEdge::relation, Collectors.counting()));
+        return new GraphStats(nodes.size(), edges.size(), byKind, byRelation);
+    }
+
+    public record GraphStats(
+            int nodeCount,
+            int edgeCount,
+            Map<CodeNode.NodeKind, Long> nodesByKind,
+            Map<CodeEdge.Relation, Long> edgesByRelation
+    ) {
+    }
+}
