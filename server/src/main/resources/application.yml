@@ -1,0 +1,41 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: team-jeopardy
+
+team-jeopardy:
+  sample-code-path: ../samples/sample-reactor
+  sample-gradle-path: ../samples/sample-gradle
+  sample-vue-path: ../samples/sample-vue
+  sample-python-path: ../samples/sample-python
+  allowed-origins: "*"
+  max-teams: 6
+  max-players-per-team: 8
+  buzz-lock-ms: 8000
+  questions:
+    # Mix engineer + QA lenses on the same graph (coder, qa, or both)
+    personas: coder,qa
+    max-categories: 6
+  openai:
+    # Heuristic clues always work offline. Enable to polish prompts with Chat Completions.
+    enabled: false
+    api-key: ${OPENAI_API_KEY:}
+    model: gpt-4o-mini
+    base-url: https://api.openai.com/v1
+    max-clues: 24
+    timeout-seconds: 20
+  github:
+    # Recent PR boards: set GITHUB_TOKEN (or GH_TOKEN) for private repos / higher rate limits.
+    token: ${GITHUB_TOKEN:}
+    api-base: https://api.github.com
+    # Public by default; private repos work when GITHUB_TOKEN can read them.
+    default-repo: jmjava/team-jeopardy
+    pr-limit: 8
+    timeout-seconds: 45
+    workspace: ${java.io.tmpdir}/team-jeopardy-github
+
+logging:
+  level:
+    com.jmjava.teamjeopardy: INFO

@@ -1,0 +1,5 @@
+Manifest-Version: 1.0
+Bundle-ManifestVersion: 2
+Bundle-SymbolicName: com.example.platform.api
+Bundle-Version: 7.0.0
+Export-Package: com.example.platform.api;version="7.0.0"

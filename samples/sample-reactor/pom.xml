@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+    <modelVersion>4.0.0</modelVersion>
+    <groupId>com.example</groupId>
+    <artifactId>sample-parent</artifactId>
+    <version>7.1.0-SNAPSHOT</version>
+    <packaging>pom</packaging>
+    <modules>
+        <module>parent</module>
+        <module>platform-api</module>
+        <module>storefront-api</module>
+        <module>batch</module>
+    </modules>
+</project>
