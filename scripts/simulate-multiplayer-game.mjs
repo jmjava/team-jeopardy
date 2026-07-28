@@ -13,10 +13,12 @@
  * Env:
  *   API_BASE (default http://localhost:8080)
  *   SKIP_GITHUB=1 to skip GitHub/PR scenarios (samples only)
+ *
+ * Prefer a branch that contains source (e.g. the feature branch), not an empty main.
  */
 const API = process.env.API_BASE || 'http://localhost:8080'
 const repo = process.argv[2] || 'jmjava/team-jeopardy'
-const ref = process.argv[3] || 'main'
+const ref = process.argv[3] || process.env.SIM_REF || 'cursor/team-jeopardy-realtime-dc86'
 const folder = process.argv[4] || 'client/src'
 const skipGithub = process.env.SKIP_GITHUB === '1'
 
@@ -251,6 +253,7 @@ async function main() {
         body: JSON.stringify({ repo, ref, path: '', recursive: false })
       })
       assert(Array.isArray(browse.folders), 'browse.folders missing')
+      assert(browse.folders.length > 0, `Expected folders on ${repo}@${ref}`)
       console.log(`    top-level folders=${browse.folders.length}`)
     })
 
@@ -272,6 +275,10 @@ async function main() {
         questionFocuses: ['architecture', 'components', 'pull-requests', 'qa']
       })
       assert(board.snapshot.board?.categories?.length, 'GitHub board empty')
+      assert(
+        (board.ingestSummary?.nodes || 0) > 0 || (board.ingestSummary?.pullRequests || 0) > 0,
+        'GitHub ingest produced neither code nodes nor PRs'
+      )
       console.log('    ingest', {
         nodes: board.ingestSummary?.nodes,
         edges: board.ingestSummary?.edges,

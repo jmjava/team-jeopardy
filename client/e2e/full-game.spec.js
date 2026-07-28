@@ -25,7 +25,9 @@ test('moderator picks sample, sets hints, admits, full clue loop', async ({ brow
 
   await host.goto('/')
   await host.getByRole('button', { name: /Create room/i }).click()
-  await expect(host.getByText(/Game control|Moderator/i)).toBeVisible({ timeout: 20_000 })
+  await expect(host.getByRole('heading', { name: 'Game control' })).toBeVisible({
+    timeout: 20_000
+  })
 
   const roomCode = (await host.locator('.room-chip strong').textContent())?.trim()
   expect(roomCode).toBeTruthy()
@@ -43,18 +45,22 @@ test('moderator picks sample, sets hints, admits, full clue loop', async ({ brow
   await joinAs(p1, roomCode, 'Alex', 'Blue Owls')
   await joinAs(p2, roomCode, 'Sam', 'Red Foxes')
 
-  await expect(host.getByText('Alex')).toBeVisible()
-  await expect(host.getByText('Sam')).toBeVisible()
+  const waiting = host.locator('.panel').filter({ hasText: 'Waiting' })
+  await expect(waiting.getByText('Alex', { exact: true })).toBeVisible()
+  await expect(waiting.getByText('Sam', { exact: true })).toBeVisible()
 
   // Single admit first — Start needs at least one admitted teamed player
-  await host.getByRole('button', { name: /^Admit$/i }).first().click()
-  await expect(host.locator('.panel').filter({ hasText: 'In game' }).getByText('Alex')).toBeVisible({
-    timeout: 15_000
-  })
+  await waiting.getByRole('button', { name: /^Admit$/i }).first().click()
+  const inGame = host.locator('.panel').filter({ hasText: 'In game' })
+  await expect(inGame.getByText('Alex', { exact: true })).toBeVisible({ timeout: 15_000 })
 
   await host.getByRole('button', { name: /Admit all/i }).click()
-  await expect(p1.getByText(/Waiting for kickoff|You're in/i)).toBeVisible({ timeout: 20_000 })
-  await expect(p2.getByText(/Waiting for kickoff|You're in/i)).toBeVisible({ timeout: 20_000 })
+  await expect(p1.getByRole('heading', { name: 'Waiting for kickoff' })).toBeVisible({
+    timeout: 20_000
+  })
+  await expect(p2.getByRole('heading', { name: 'Waiting for kickoff' })).toBeVisible({
+    timeout: 20_000
+  })
 
   await host.getByRole('button', { name: /Start game/i }).click()
   await expect(host.locator('.board')).toBeVisible({ timeout: 20_000 })
@@ -62,29 +68,36 @@ test('moderator picks sample, sets hints, admits, full clue loop', async ({ brow
 
   const cell = host.locator('button.cell:not(.answered)').first()
   await cell.click()
-  await expect(host.getByText(/read this first|Show clue|Host preview/i)).toBeVisible({
+  await expect(host.getByText('Clue — read this first')).toBeVisible({ timeout: 15_000 })
+  await expect(
+    host.getByRole('button', { name: 'Show clue & open buzzers' })
+  ).toBeVisible()
+
+  // Players should not see the full prompt yet
+  await expect(p1.getByRole('heading', { name: 'Host is reading the clue' })).toBeVisible({
     timeout: 15_000
   })
 
-  // Players should not see the full prompt yet
-  await expect(p1.getByText(/Host is reading the clue|Get ready/i)).toBeVisible({ timeout: 15_000 })
+  await host.getByRole('button', { name: 'Show clue & open buzzers' }).click()
+  await expect(p1.getByRole('button', { name: 'Buzz' })).toBeVisible({ timeout: 15_000 })
+  await expect(p2.getByRole('button', { name: 'Buzz' })).toBeVisible({ timeout: 15_000 })
 
-  await host.getByRole('button', { name: /Show clue & open buzzers/i }).click()
-  await expect(p1.getByRole('button', { name: /^Buzz/i })).toBeVisible({ timeout: 15_000 })
-  await expect(p2.getByRole('button', { name: /^Buzz/i })).toBeVisible({ timeout: 15_000 })
-
-  await p1.getByRole('button', { name: /^Buzz/i }).click()
-  await expect(host.getByText(/First buzz|Buzzed/i)).toBeVisible({ timeout: 15_000 })
+  // Pulse animation keeps the buzz button "unstable" for Playwright's actionability checks.
+  await p1.getByRole('button', { name: 'Buzz' }).click({ force: true })
+  await expect(host.getByText('First buzz', { exact: true })).toBeVisible({ timeout: 15_000 })
+  await expect(host.locator('.buzz-banner h2')).toHaveText('Alex')
 
   // Incorrect → buzzers reopen for the other player
-  await host.getByRole('button', { name: 'Incorrect' }).click()
-  await expect(p2.getByRole('button', { name: /^Buzz/i })).toBeVisible({ timeout: 15_000 })
-  await p2.getByRole('button', { name: /^Buzz/i }).click()
-  await expect(host.getByText('Sam')).toBeVisible({ timeout: 15_000 })
+  await host.getByRole('button', { name: 'Incorrect', exact: true }).click()
+  await expect(p2.getByRole('button', { name: 'Buzz' })).toBeVisible({ timeout: 15_000 })
+  await p2.getByRole('button', { name: 'Buzz' }).click({ force: true })
+  await expect(host.locator('.buzz-banner h2')).toHaveText('Sam')
 
-  await host.getByRole('button', { name: 'Correct' }).click()
-  await expect(host.getByRole('button', { name: /Back to board/i })).toBeVisible({ timeout: 15_000 })
-  await host.getByRole('button', { name: /Back to board/i }).click()
+  await host.getByRole('button', { name: 'Correct', exact: true }).click()
+  await expect(host.getByRole('button', { name: 'Back to board', exact: true })).toBeVisible({
+    timeout: 15_000
+  })
+  await host.getByRole('button', { name: 'Back to board', exact: true }).click()
   await expect(host.locator('.board')).toBeVisible()
 
   await hostCtx.close()
@@ -95,7 +108,9 @@ test('moderator picks sample, sets hints, admits, full clue loop', async ({ brow
 test('moderator can switch sample content types after hints', async ({ page }) => {
   await page.goto('/')
   await page.getByRole('button', { name: /Create room/i }).click()
-  await expect(page.getByText(/Game control|Moderator/i)).toBeVisible({ timeout: 20_000 })
+  await expect(page.getByRole('heading', { name: 'Game control' })).toBeVisible({
+    timeout: 20_000
+  })
 
   await page.getByRole('button', { name: 'Components' }).click()
   await page.getByRole('button', { name: 'Pull requests' }).click()
