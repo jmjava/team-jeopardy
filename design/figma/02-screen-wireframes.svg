@@ -1,0 +1,158 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1200" viewBox="0 0 1800 1200" fill="none">
+  <title>Team Jeopardy  Screen Wireframes</title>
+
+  <rect width="1800" height="1200" fill="#071225"/>
+  <text x="60" y="50" fill="#f4f7ff" font-family="Arial, Helvetica, sans-serif" font-size="32" font-weight="700">Screen Wireframes</text>
+  <text x="60" y="82" fill="#a9b7d4" font-family="Arial, Helvetica, sans-serif" font-size="14">Low-fidelity layouts matching Vue components · 1180px max content width in app</text>
+
+  <!-- Frame 1: Lobby -->
+  <g id="frame-lobby" transform="translate(60, 110)">
+    <text x="0" y="0" fill="#f0d060" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="700">1 · LOBBY (LobbyView.vue)</text>
+    <rect y="12" width="520" height="420" rx="16" fill="#0c1c3a" stroke="#a9b7d4" stroke-width="1" stroke-opacity="0.3"/>
+
+    <!-- Header -->
+    <text x="24" y="52" fill="#f0d060" font-family="Arial, Helvetica, sans-serif" font-size="10" letter-spacing="2">MODERATOR · LOBBY · LIVE BUZZERS</text>
+    <text x="24" y="88" fill="#f4f7ff" font-family="Arial, Helvetica, sans-serif" font-size="36" font-weight="700">Team Jeopardy</text>
+
+    <!-- Hero copy -->
+    <rect x="24" y="110" width="220" height="8" rx="4" fill="#1152c0" opacity="0.5"/>
+    <rect x="24" y="128" width="280" height="6" rx="3" fill="#a9b7d4" opacity="0.4"/>
+    <rect x="24" y="142" width="240" height="6" rx="3" fill="#a9b7d4" opacity="0.4"/>
+
+    <!-- Two cards -->
+    <rect x="24" y="180" width="220" height="220" rx="14" fill="#0f1b33" stroke="#f4f7ff" stroke-opacity="0.08"/>
+    <text x="40" y="212" fill="#f4f7ff" font-family="Arial, Helvetica, sans-serif" font-size="16" font-weight="700">Moderator</text>
+    <rect x="40" y="228" width="188" height="28" rx="8" fill="#ffffff" fill-opacity="0.06" stroke="#f4f7ff" stroke-opacity="0.15"/>
+    <rect x="40" y="268" width="188" height="28" rx="8" fill="#ffffff" fill-opacity="0.06" stroke="#f4f7ff" stroke-opacity="0.15"/>
+    <rect x="40" y="320" width="120" height="32" rx="8" fill="#f0d060"/>
+    <text x="58" y="341" fill="#1a1400" font-family="Arial, Helvetica, sans-serif" font-size="12" font-weight="700">Create room</text>
+
+    <rect x="260" y="180" width="220" height="220" rx="14" fill="#0f1b33" stroke="#f4f7ff" stroke-opacity="0.08"/>
+    <text x="276" y="212" fill="#f4f7ff" font-family="Arial, Helvetica, sans-serif" font-size="16" font-weight="700">Player</text>
+    <rect x="276" y="228" width="188" height="28" rx="8" fill="#ffffff" fill-opacity="0.06" stroke="#f4f7ff" stroke-opacity="0.15"/>
+    <rect x="276" y="268" width="188" height="28" rx="8" fill="#ffffff" fill-opacity="0.06" stroke="#f4f7ff" stroke-opacity="0.15"/>
+    <rect x="276" y="308" width="188" height="28" rx="8" fill="#ffffff" fill-opacity="0.06" stroke="#f4f7ff" stroke-opacity="0.15"/>
+    <rect x="276" y="352" width="120" height="32" rx="8" fill="none" stroke="#f4f7ff" stroke-opacity="0.25"/>
+    <text x="294" y="373" fill="#f4f7ff" font-family="Arial, Helvetica, sans-serif" font-size="12">Join lobby</text>
+  </g>
+
+  <!-- Frame 2: Moderator -->
+  <g id="frame-moderator" transform="translate(620, 110)">
+    <text x="0" y="0" fill="#f0d060" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="700">2 · MODERATOR CONSOLE (ModeratorConsole.vue)</text>
+    <rect y="12" width="520" height="420" rx="16" fill="#0c1c3a" stroke="#a9b7d4" stroke-width="1" stroke-opacity="0.3"/>
+
+    <text x="24" y="52" fill="#f0d060" font-family="Arial, Helvetica, sans-serif" font-size="10" letter-spacing="2">ROOM ABC123 · SYNC connected</text>
+
+    <!-- Ingest panel -->
+    <rect x="24" y="72" width="472" height="120" rx="12" fill="#0f1b33"/>
+    <text x="40" y="98" fill="#f4f7ff" font-family="Arial, Helvetica, sans-serif" font-size="14" font-weight="700">Build board</text>
+    <rect x="40" y="110" width="80" height="28" rx="6" fill="#1152c0"/><text x="52" y="129" fill="#f4f7ff" font-size="10">Maven</text>
+    <rect x="128" y="110" width="80" height="28" rx="6" fill="#1152c0"/><text x="138" y="129" fill="#f4f7ff" font-size="10">GitHub</text>
+    <rect x="216" y="110" width="80" height="28" rx="6" fill="#1152c0"/><text x="232" y="129" fill="#f4f7ff" font-size="10">Saved</text>
+    <rect x="40" y="150" width="140" height="28" rx="8" fill="#f0d060"/><text x="58" y="169" fill="#1a1400" font-size="11" font-weight="700">Ingest sample</text>
+
+    <!-- Lobby queue -->
+    <rect x="24" y="210" width="220" height="180" rx="12" fill="#0f1b33"/>
+    <text x="40" y="238" fill="#f4f7ff" font-size="14" font-weight="700">Lobby queue</text>
+    <rect x="40" y="252" width="188" height="24" rx="6" fill="#ffffff" fill-opacity="0.05"/>
+    <rect x="40" y="284" width="188" height="24" rx="6" fill="#ffffff" fill-opacity="0.05"/>
+    <rect x="40" y="330" width="90" height="28" rx="8" fill="#3ecf8e"/><text x="52" y="349" fill="#042416" font-size="10" font-weight="700">Admit all</text>
+
+    <!-- Actions -->
+    <rect x="260" y="210" width="236" height="180" rx="12" fill="#0f1b33"/>
+    <text x="276" y="238" fill="#f4f7ff" font-size="14" font-weight="700">Kickoff</text>
+    <rect x="276" y="260" width="120" height="32" rx="8" fill="#f0d060"/><text x="294" y="281" fill="#1a1400" font-size="11" font-weight="700">Start game</text>
+    <rect x="276" y="306" width="160" height="32" rx="8" fill="none" stroke="#f4f7ff" stroke-opacity="0.25"/><text x="294" y="327" fill="#f4f7ff" font-size="11">Open display</text>
+  </g>
+
+  <!-- Frame 3: Board -->
+  <g id="frame-board" transform="translate(1180, 110)">
+    <text x="0" y="0" fill="#f0d060" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="700">3 · GAME BOARD (BoardView.vue)</text>
+    <rect y="12" width="560" height="420" rx="16" fill="#0c1c3a" stroke="#a9b7d4" stroke-width="1" stroke-opacity="0.3"/>
+
+    <!-- Scorebar -->
+    <rect x="24" y="32" width="512" height="44" rx="10" fill="#0f1b33"/>
+    <rect x="40" y="44" width="80" height="20" rx="6" fill="#E8C547"/><text x="52" y="58" fill="#1a1400" font-size="10">Team A 400</text>
+    <rect x="140" y="44" width="80" height="20" rx="6" fill="#3D8BFF"/><text x="152" y="58" fill="#fff" font-size="10">Team B 200</text>
+
+    <!-- Jeopardy grid 6x5 -->
+    <g transform="translate(24, 92)">
+      <rect width="512" height="36" rx="6" fill="#0b3d91"/>
+      <rect x="0" y="44" width="80" height="48" rx="6" fill="#1152c0"/><text x="28" y="74" fill="#f0d060" font-size="14" font-weight="700">$200</text>
+      <rect x="88" y="44" width="80" height="48" rx="6" fill="#1152c0"/><text x="116" y="74" fill="#f0d060" font-size="14" font-weight="700">$200</text>
+      <rect x="176" y="44" width="80" height="48" rx="6" fill="#1152c0"/><text x="204" y="74" fill="#f0d060" font-size="14" font-weight="700">$200</text>
+      <rect x="264" y="44" width="80" height="48" rx="6" fill="#1152c0"/><text x="292" y="74" fill="#f0d060" font-size="14" font-weight="700">$200</text>
+      <rect x="352" y="44" width="80" height="48" rx="6" fill="#1152c0"/><text x="380" y="74" fill="#f0d060" font-size="14" font-weight="700">$200</text>
+      <rect x="440" y="44" width="72" height="48" rx="6" fill="#1152c0"/><text x="462" y="74" fill="#f0d060" font-size="14" font-weight="700">$200</text>
+
+      <rect x="0" y="100" width="80" height="48" rx="6" fill="#1152c0"/><text x="28" y="130" fill="#f0d060" font-size="14" font-weight="700">$400</text>
+      <rect x="88" y="100" width="80" height="48" rx="6" fill="#1a6ae0" stroke="#f0d060" stroke-width="2"/><text x="116" y="130" fill="#f0d060" font-size="14" font-weight="700">$400</text>
+      <rect x="176" y="100" width="80" height="48" rx="6" fill="#1152c0" opacity="0.35"/><text x="204" y="130" fill="#a9b7d4" font-size="14">answered</text>
+      <rect x="264" y="100" width="80" height="48" rx="6" fill="#1152c0"/><text x="292" y="130" fill="#f0d060" font-size="14" font-weight="700">$400</text>
+      <rect x="352" y="100" width="80" height="48" rx="6" fill="#1152c0"/><text x="380" y="130" fill="#f0d060" font-size="14" font-weight="700">$400</text>
+      <rect x="440" y="100" width="72" height="48" rx="6" fill="#1152c0"/><text x="462" y="130" fill="#f0d060" font-size="14" font-weight="700">$400</text>
+
+      <text x="0" y="-8" fill="#a9b7d4" font-size="10">Category headers · gold $ values · host selects cell</text>
+    </g>
+  </g>
+
+  <!-- Frame 4: Clue stage -->
+  <g id="frame-clue" transform="translate(60, 580)">
+    <text x="0" y="0" fill="#f0d060" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="700">4 · CLUE STAGE (ClueStage.vue / HostCluePreview.vue)</text>
+    <rect y="12" width="520" height="320" rx="16" fill="#0c1c3a" stroke="#a9b7d4" stroke-width="1" stroke-opacity="0.3"/>
+
+    <rect x="24" y="40" width="472" height="180" rx="14" fill="#0b3d91"/>
+    <text x="48" y="80" fill="#f0d060" font-size="12">$800 · Patterns</text>
+    <text x="48" y="120" fill="#f4f7ff" font-size="18" font-weight="700">This Spring bean wires a</text>
+    <text x="48" y="148" fill="#f4f7ff" font-size="18" font-weight="700">singleton repository&</text>
+
+    <rect x="24" y="240" width="100" height="36" rx="8" fill="#f0d060"/><text x="42" y="263" fill="#1a1400" font-size="12" font-weight="700">Buzz!</text>
+    <rect x="140" y="240" width="100" height="36" rx="8" fill="#3ecf8e"/><text x="152" y="263" fill="#042416" font-size="12" font-weight="700">Correct</text>
+    <rect x="252" y="240" width="100" height="36" rx="8" fill="#e85d4c"/><text x="272" y="263" fill="#fff" font-size="12" font-weight="700">Wrong</text>
+    <rect x="364" y="240" width="132" height="36" rx="8" fill="none" stroke="#f4f7ff" stroke-opacity="0.25"/><text x="382" y="263" fill="#f4f7ff" font-size="12">Back to board</text>
+  </g>
+
+  <!-- Frame 5: Shared display -->
+  <g id="frame-display" transform="translate(620, 580)">
+    <text x="0" y="0" fill="#f0d060" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="700">5 · SHARED DISPLAY (SharedDisplay.vue · ?view=display)</text>
+    <rect y="12" width="520" height="320" rx="16" fill="#0c1c3a" stroke="#c084fc" stroke-width="1.5" stroke-opacity="0.5"/>
+
+    <text x="24" y="52" fill="#f0d060" font-size="10" letter-spacing="2">SHARED SCREEN</text>
+    <text x="24" y="88" fill="#f4f7ff" font-size="28" font-weight="700">Maven Team Jeopardy</text>
+    <text x="420" y="88" text-anchor="end" fill="#f0d060" font-size="24" font-weight="700">ABC123</text>
+
+    <rect x="24" y="110" width="472" height="36" rx="8" fill="#0f1b33"/>
+    <text x="40" y="134" fill="#a9b7d4" font-size="12">Scorebar (compact) · read-only board or clue</text>
+
+    <rect x="24" y="160" width="472" height="140" rx="10" fill="#0b3d91" opacity="0.6"/>
+    <text x="200" y="235" fill="#a9b7d4" font-size="14">Full-width board for projector</text>
+  </g>
+
+  <!-- Frame 6: Admin -->
+  <g id="frame-admin" transform="translate(1180, 580)">
+    <text x="0" y="0" fill="#f0d060" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="700">6 · QUESTION BANK ADMIN (QuestionBankAdmin.vue · ?view=admin)</text>
+    <rect y="12" width="560" height="320" rx="16" fill="#0c1c3a" stroke="#c084fc" stroke-width="1.5" stroke-opacity="0.5"/>
+
+    <rect x="24" y="36" width="200" height="260" rx="10" fill="#0f1b33"/>
+    <text x="40" y="62" fill="#f4f7ff" font-size="14" font-weight="700">Saved boards</text>
+    <rect x="40" y="76" width="168" height="28" rx="6" fill="#1152c0" opacity="0.5"/>
+    <rect x="40" y="112" width="168" height="28" rx="6" fill="#ffffff" fill-opacity="0.05"/>
+    <rect x="40" y="148" width="168" height="28" rx="6" fill="#ffffff" fill-opacity="0.05"/>
+
+    <rect x="240" y="36" width="296" height="260" rx="10" fill="#0f1b33"/>
+    <text x="256" y="62" fill="#f4f7ff" font-size="14" font-weight="700">Clue editor / bulk upload</text>
+    <rect x="256" y="80" width="264" height="28" rx="6" fill="#ffffff" fill-opacity="0.06"/>
+    <rect x="256" y="120" width="264" height="28" rx="6" fill="#ffffff" fill-opacity="0.06"/>
+    <rect x="256" y="160" width="264" height="80" rx="6" fill="#ffffff" fill-opacity="0.06"/>
+    <rect x="256" y="260" width="100" height="28" rx="8" fill="#f0d060"/><text x="274" y="279" fill="#1a1400" font-size="11" font-weight="700">Save clue</text>
+  </g>
+
+  <!-- App shell annotation -->
+  <g id="app-shell-note" transform="translate(60, 960)">
+    <rect width="1680" height="100" rx="12" fill="#0f1b33" stroke="#f0d060" stroke-opacity="0.25"/>
+    <text x="24" y="36" fill="#f0d060" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="700">App.vue shell (all frames except display/admin)</text>
+    <text x="24" y="62" fill="#a9b7d4" font-family="Arial, Helvetica, sans-serif" font-size="13">Header: eyebrow + brand title + room meta (code, name, WebSocket sync status)</text>
+    <text x="24" y="84" fill="#a9b7d4" font-family="Arial, Helvetica, sans-serif" font-size="13">Body: single active component based on session.roomId, phase, isHost, admitted</text>
+  </g>
+</svg>
