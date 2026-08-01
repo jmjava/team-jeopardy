@@ -125,6 +125,50 @@ class QuestionBankServiceTest {
         assertEquals(0, service.list(10).size());
     }
 
+    @Test
+    void bulkUploadCreatesAndSkipsDuplicates() {
+        QuestionBankService.ManualBoardSpec spec = new QuestionBankService.ManualBoardSpec(
+                "Bulk Board",
+                "manual",
+                "manual:bulk-one",
+                "",
+                QuestionHints.empty(),
+                List.of(new Category(
+                        "dev",
+                        "DEV: Bulk",
+                        List.of(new Clue("c1", 200, "Prompt?", "Answer", "", "", false))
+                )),
+                new Board.GraphDigest(0, 0, 0, 0, 0)
+        );
+
+        QuestionBankService.BulkResult first = service.bulkCreate(List.of(spec), true);
+        assertEquals(1, first.created());
+        assertEquals(0, first.skipped());
+        assertEquals(0, first.failed());
+
+        QuestionBankService.BulkResult second = service.bulkCreate(List.of(spec), true);
+        assertEquals(0, second.created());
+        assertEquals(1, second.skipped());
+
+        QuestionBankService.BulkResult mixed = service.bulkCreate(
+                List.of(
+                        spec,
+                        new QuestionBankService.ManualBoardSpec(
+                                "Broken",
+                                "manual",
+                                "manual:broken",
+                                "",
+                                QuestionHints.empty(),
+                                List.of(),
+                                null
+                        )
+                ),
+                false
+        );
+        assertEquals(1, mixed.created());
+        assertEquals(1, mixed.failed());
+    }
+
     private static Board sampleBoard() {
         return new Board(
                 "Maven Jeopardy",

@@ -164,6 +164,83 @@ public class QuestionBankService {
         ));
     }
 
+    /**
+     * Bulk-create boards for admin import. When {@code skipDuplicates} is true,
+     * boards whose source+hints fingerprint already exists are skipped.
+     */
+    public BulkResult bulkCreate(List<ManualBoardSpec> specs, boolean skipDuplicates) {
+        requireEnabled();
+        if (specs == null || specs.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "boards array is required");
+        }
+        List<BulkItem> results = new ArrayList<>();
+        int created = 0;
+        int skipped = 0;
+        int failed = 0;
+        for (int i = 0; i < specs.size(); i++) {
+            ManualBoardSpec spec = specs.get(i);
+            String title = spec == null || spec.title() == null ? "" : spec.title().trim();
+            try {
+                if (spec == null) {
+                    throw new IllegalArgumentException("board entry is null");
+                }
+                QuestionHints hints = spec.hints() == null ? QuestionHints.empty() : spec.hints();
+                String kind = blankTo(spec.sourceKind(), "manual");
+                String key = blankTo(
+                        spec.sourceKey(),
+                        "manual:" + (title.isBlank() ? ("item-" + i) : title.toLowerCase(Locale.ROOT))
+                );
+                String fingerprint = fingerprint(kind, key, hints);
+                if (skipDuplicates && repository.findLatestByFingerprint(fingerprint).isPresent()) {
+                    skipped++;
+                    results.add(new BulkItem(i, title, "skipped", null, "duplicate fingerprint"));
+                    continue;
+                }
+                SavedBoardRecord saved = createManual(
+                        title,
+                        kind,
+                        key,
+                        spec.sourceRoot(),
+                        hints,
+                        spec.categories(),
+                        spec.digest()
+                );
+                created++;
+                results.add(new BulkItem(i, saved.title(), "created", saved.id(), null));
+            } catch (ResponseStatusException e) {
+                failed++;
+                results.add(new BulkItem(i, title, "failed", null, e.getReason()));
+            } catch (RuntimeException e) {
+                failed++;
+                results.add(new BulkItem(
+                        i,
+                        title,
+                        "failed",
+                        null,
+                        e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage()
+                ));
+            }
+        }
+        return new BulkResult(created, skipped, failed, results);
+    }
+
+    public record ManualBoardSpec(
+            String title,
+            String sourceKind,
+            String sourceKey,
+            String sourceRoot,
+            QuestionHints hints,
+            List<Category> categories,
+            Board.GraphDigest digest
+    ) {
+    }
+
+    public record BulkItem(int index, String title, String status, String id, String message) {
+    }
+
+    public record BulkResult(int created, int skipped, int failed, List<BulkItem> results) {
+    }
+
     public List<SavedClueRecord> listCluesForBoard(String boardId) {
         requireEnabled();
         get(boardId);

@@ -123,6 +123,33 @@ public final class Dto {
     ) {
     }
 
+    /**
+     * Bulk import payload. Accept either {@code boards: [...]} or a top-level array
+     * deserialized into {@code boards}.
+     */
+    public record BulkUploadRequest(
+            List<CreateSavedBoardRequest> boards,
+            Boolean skipDuplicates
+    ) {
+    }
+
+    public record BulkUploadItemResult(
+            int index,
+            String title,
+            String status,
+            String id,
+            String message
+    ) {
+    }
+
+    public record BulkUploadResponse(
+            int created,
+            int skipped,
+            int failed,
+            List<BulkUploadItemResult> results
+    ) {
+    }
+
     public record ActionRequest(
             @NotBlank String playerId,
             @NotBlank String type,

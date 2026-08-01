@@ -2,27 +2,59 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import {
   addQuestionBankClue,
+  bulkUploadQuestionBank,
+  bulkUploadQuestionBankFile,
   createQuestionBankBoard,
   deleteAllQuestionBank,
   deleteQuestionBankBoard,
   deleteQuestionBankClue,
+  exportQuestionBank,
   getQuestionBankBoard,
   listQuestionBank,
   searchQuestionBankClues
 } from '../api'
+
+const SAMPLE_BULK = `{
+  "skipDuplicates": true,
+  "boards": [
+    {
+      "title": "Example Board",
+      "sourceKind": "manual",
+      "sourceKey": "manual:example",
+      "questionHints": "patterns",
+      "categories": [
+        {
+          "title": "DEV: Patterns",
+          "clues": [
+            {
+              "value": 200,
+              "prompt": "Which pattern swaps algorithms at runtime?",
+              "response": "Strategy",
+              "explanation": "Behavioral GoF pattern"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}`
 
 const emit = defineEmits(['back'])
 
 const busy = ref(false)
 const error = ref('')
 const notice = ref('')
-const tab = ref('boards') // boards | clues | add
+const tab = ref('boards') // boards | clues | add | bulk
 const boards = ref([])
 const status = reactive({ enabled: true, boardCount: 0, clueCount: 0 })
 const selectedId = ref('')
 const selected = ref(null)
 const clueQuery = ref('')
 const clueResults = ref([])
+const bulkJson = ref(SAMPLE_BULK)
+const bulkSkipDuplicates = ref(true)
+const bulkResult = ref(null)
+const fileInput = ref(null)
 
 const newBoard = reactive({
   title: '',
@@ -237,6 +269,72 @@ function formatWhen(value) {
   }
 }
 
+async function submitBulkJson() {
+  busy.value = true
+  error.value = ''
+  notice.value = ''
+  bulkResult.value = null
+  try {
+    const parsed = JSON.parse(bulkJson.value)
+    const payload = Array.isArray(parsed)
+      ? { boards: parsed, skipDuplicates: bulkSkipDuplicates.value }
+      : { ...parsed, skipDuplicates: parsed.skipDuplicates ?? bulkSkipDuplicates.value }
+    bulkResult.value = await bulkUploadQuestionBank(payload)
+    notice.value = `Bulk upload: ${bulkResult.value.created} created, ${bulkResult.value.skipped} skipped, ${bulkResult.value.failed} failed.`
+    await refresh()
+  } catch (err) {
+    error.value = err.message
+  } finally {
+    busy.value = false
+  }
+}
+
+async function onBulkFileChange(event) {
+  const file = event.target?.files?.[0]
+  if (!file) return
+  busy.value = true
+  error.value = ''
+  notice.value = ''
+  bulkResult.value = null
+  try {
+    const text = await file.text()
+    bulkJson.value = text
+    bulkResult.value = await bulkUploadQuestionBankFile(file, bulkSkipDuplicates.value)
+    notice.value = `File upload: ${bulkResult.value.created} created, ${bulkResult.value.skipped} skipped, ${bulkResult.value.failed} failed.`
+    await refresh()
+  } catch (err) {
+    error.value = err.message
+  } finally {
+    busy.value = false
+    if (fileInput.value) fileInput.value.value = ''
+  }
+}
+
+async function downloadExport() {
+  busy.value = true
+  error.value = ''
+  notice.value = ''
+  try {
+    const payload = await exportQuestionBank(200)
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'question-bank-export.json'
+    a.click()
+    URL.revokeObjectURL(url)
+    notice.value = `Exported ${payload.boards?.length || 0} board(s).`
+  } catch (err) {
+    error.value = err.message
+  } finally {
+    busy.value = false
+  }
+}
+
+function loadSampleBulk() {
+  bulkJson.value = SAMPLE_BULK
+}
+
 onMounted(refresh)
 </script>
 
@@ -252,6 +350,9 @@ onMounted(refresh)
       </div>
       <div class="actions">
         <button type="button" class="secondary" :disabled="busy" @click="refresh">Refresh</button>
+        <button type="button" class="secondary" :disabled="busy || !status.boardCount" @click="downloadExport">
+          Export JSON
+        </button>
         <button type="button" class="danger" :disabled="busy || !status.boardCount" @click="clearAll">
           Clear all
         </button>
@@ -283,6 +384,7 @@ onMounted(refresh)
         Search clues
       </button>
       <button type="button" :class="{ on: tab === 'add' }" @click="tab = 'add'">Add board</button>
+      <button type="button" :class="{ on: tab === 'bulk' }" @click="tab = 'bulk'">Bulk upload</button>
     </nav>
 
     <div v-if="tab === 'boards'" class="split">
@@ -401,7 +503,7 @@ onMounted(refresh)
       <p v-if="!clueResults.length" class="muted empty">No clues matched.</p>
     </div>
 
-    <form v-else class="panel add-board" @submit.prevent="createBoard">
+    <form v-else-if="tab === 'add'" class="panel add-board" @submit.prevent="createBoard">
       <h3>Add board record</h3>
       <p class="muted">Creates a SQLite board with one starter clue. Add more clues after saving.</p>
       <div class="fields">
@@ -458,6 +560,53 @@ onMounted(refresh)
       </label>
       <button type="submit" class="ok" :disabled="busy">Create board</button>
     </form>
+
+    <div v-else class="panel bulk">
+      <h3>Bulk upload</h3>
+      <p class="muted">
+        Paste JSON or choose a file. Accepts
+        <code>{"boards":[...],"skipDuplicates":true}</code>
+        or a bare array of boards. Same shape as Export JSON /
+        <code>samples/question-bank-bulk-example.json</code>.
+      </p>
+
+      <label class="check">
+        <input v-model="bulkSkipDuplicates" type="checkbox" />
+        Skip boards with the same source + hints fingerprint
+      </label>
+
+      <div class="row">
+        <button type="button" class="secondary slim" @click="loadSampleBulk">Load sample JSON</button>
+        <label class="file-btn secondary slim">
+          Choose JSON file
+          <input ref="fileInput" type="file" accept="application/json,.json" hidden @change="onBulkFileChange" />
+        </label>
+        <button type="button" class="ok" :disabled="busy" @click="submitBulkJson">Upload pasted JSON</button>
+      </div>
+
+      <label class="block">
+        JSON payload
+        <textarea v-model="bulkJson" rows="16" class="mono" spellcheck="false" />
+      </label>
+
+      <div v-if="bulkResult" class="bulk-result">
+        <p class="notice">
+          Created {{ bulkResult.created }} · skipped {{ bulkResult.skipped }} · failed {{ bulkResult.failed }}
+        </p>
+        <ul class="clue-list">
+          <li v-for="item in bulkResult.results || []" :key="`${item.index}-${item.status}`">
+            <div>
+              <strong>#{{ item.index }} · {{ item.title || '(untitled)' }}</strong>
+              <p class="muted tiny">
+                {{ item.status }}
+                <template v-if="item.id"> · {{ item.id.slice(0, 8) }}…</template>
+                <template v-if="item.message"> · {{ item.message }}</template>
+              </p>
+            </div>
+          </li>
+        </ul>
+      </div>
+    </div>
   </section>
 </template>
 
@@ -662,8 +811,37 @@ select {
 
 .add-clue,
 .add-board,
+.bulk,
 .search {
   margin-top: 1rem;
+}
+
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+
+.file-btn {
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+  border: 1px solid rgba(244, 247, 255, 0.25);
+  border-radius: 10px;
+  padding: 0.45rem 0.7rem;
+  background: transparent;
+  color: var(--text);
+  font-weight: 700;
+}
+
+.bulk-result {
+  margin-top: 1rem;
+}
+
+code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.85em;
+  color: var(--gold);
 }
 
 @media (max-width: 900px) {

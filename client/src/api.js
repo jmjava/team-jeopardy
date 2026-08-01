@@ -122,3 +122,35 @@ export function searchQuestionBankClues(q = '', limit = 100) {
   if (q) params.set('q', q)
   return request(`/api/question-bank/clues?${params}`)
 }
+
+export function bulkUploadQuestionBank(payload) {
+  return request('/api/question-bank/bulk', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  })
+}
+
+export function bulkUploadQuestionBankFile(file, skipDuplicates = true) {
+  const form = new FormData()
+  form.append('file', file)
+  return fetch(`${API_BASE}/api/question-bank/bulk?skipDuplicates=${skipDuplicates ? 'true' : 'false'}`, {
+    method: 'POST',
+    body: form
+  }).then(async (response) => {
+    if (!response.ok) {
+      let detail = response.statusText
+      try {
+        const body = await response.json()
+        detail = body.message || body.error || detail
+      } catch {
+        // ignore
+      }
+      throw new Error(detail)
+    }
+    return response.json()
+  })
+}
+
+export function exportQuestionBank(limit = 200) {
+  return request(`/api/question-bank/export?limit=${limit}`)
+}

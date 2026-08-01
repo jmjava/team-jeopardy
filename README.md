@@ -78,6 +78,8 @@ APIs:
 - `GET /api/question-bank` — list saved boards
 - `GET /api/question-bank/{id}` — full board + clue rows
 - `POST /api/question-bank` — manually add a board (+ starter clues)
+- `POST /api/question-bank/bulk` — bulk upload boards (JSON body or multipart `file`)
+- `GET /api/question-bank/export` — export boards in the bulk-upload JSON shape
 - `POST /api/question-bank/{id}/clues` — add a clue to a saved board
 - `GET /api/question-bank/clues?q=` — search individual clues
 - `DELETE /api/question-bank/{id}` — remove a saved board
@@ -88,8 +90,12 @@ APIs:
 Every successful `/api/rooms/ingest` also writes the board (and flattened clues) and
 returns `savedBoardId` in `ingestSummary`.
 
+Bulk upload accepts `{"boards":[...],"skipDuplicates":true}` or a bare board array.
+Example: `samples/question-bank-bulk-example.json`.
+
 Maintenance UI: open `/?view=admin` (or use **Question bank DB** / **DB maintenance**
-in the lobby and moderator console) to add, inspect, search, and delete records.
+in the lobby and moderator console) to add, inspect, search, bulk upload, export,
+and delete records.
 
 ## Run
 
