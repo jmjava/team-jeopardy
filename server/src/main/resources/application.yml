@@ -4,6 +4,16 @@ server:
 spring:
   application:
     name: team-jeopardy
+  datasource:
+    url: jdbc:sqlite:${team-jeopardy.persistence.path:./data/team-jeopardy.db}
+    driver-class-name: org.sqlite.JDBC
+    hikari:
+      maximum-pool-size: 1
+      connection-init-sql: PRAGMA foreign_keys=ON
+  sql:
+    init:
+      mode: always
+      continue-on-error: false
 
 team-jeopardy:
   sample-code-path: ../samples/sample-reactor
@@ -14,6 +24,10 @@ team-jeopardy:
   max-teams: 6
   max-players-per-team: 8
   buzz-lock-ms: 8000
+  persistence:
+    # SQLite file for guide-generated boards/clues (reuse across sessions)
+    enabled: true
+    path: ${TEAM_JEOPARDY_DB:./data/team-jeopardy.db}
   questions:
     # Mix engineer + QA lenses on the same graph (coder, qa, or both)
     personas: coder,qa

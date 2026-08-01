@@ -1,0 +1,61 @@
+{
+  "skipDuplicates": true,
+  "boards": [
+    {
+      "title": "Vue Patterns Warmup",
+      "sourceKind": "manual",
+      "sourceKey": "manual:vue-patterns-warmup",
+      "sourceRoot": "samples/sample-vue",
+      "questionHints": "Focus on composables and Pinia stores",
+      "questionFocuses": ["patterns", "components"],
+      "categories": [
+        {
+          "title": "DEV: Vue Patterns",
+          "clues": [
+            {
+              "value": 200,
+              "prompt": "Which pattern isolates reusable Vue state/logic outside a component?",
+              "response": "Composable",
+              "explanation": "Composables share reactive logic across SFCs."
+            },
+            {
+              "value": 400,
+              "prompt": "Which client-state pattern often needs a reset between UI tests?",
+              "response": "Pinia / Vuex store",
+              "explanation": "Shared stores retain state across mounts unless cleared."
+            }
+          ]
+        },
+        {
+          "title": "QA: Blast Radius",
+          "clues": [
+            {
+              "value": 200,
+              "prompt": "A store mutation changes the scoreboard. What is a high-value regression target?",
+              "response": "Shared display / score sync",
+              "explanation": "Realtime score UI is a common blast-radius surface."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Python Repository Drill",
+      "sourceKind": "manual",
+      "sourceKey": "manual:python-repo-drill",
+      "categories": [
+        {
+          "title": "QA: Persistence",
+          "clues": [
+            {
+              "value": 200,
+              "prompt": "Which pattern usually needs an in-memory fake at the persistence boundary?",
+              "response": "Repository",
+              "explanation": "Repository/DAO boundaries are ideal for doubles."
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

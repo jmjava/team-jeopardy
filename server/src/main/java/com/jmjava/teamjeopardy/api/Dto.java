@@ -75,6 +75,81 @@ public final class Dto {
     public record IngestResponse(GameSnapshot snapshot, Board board, Map<String, Object> ingestSummary) {
     }
 
+    public record LoadBoardRequest(
+            @NotBlank String roomId,
+            @NotBlank String playerId,
+            @NotBlank String savedBoardId
+    ) {
+    }
+
+    public record CreateSavedBoardRequest(
+            @NotBlank String title,
+            String sourceKind,
+            String sourceKey,
+            String sourceRoot,
+            String questionHints,
+            List<String> questionFocuses,
+            List<CategoryInput> categories
+    ) {
+    }
+
+    public record CategoryInput(
+            String id,
+            String title,
+            List<ClueInput> clues
+    ) {
+    }
+
+    public record ClueInput(
+            String id,
+            Integer value,
+            @NotBlank String prompt,
+            @NotBlank String response,
+            String explanation,
+            String sourcePath,
+            Boolean dailyDouble
+    ) {
+    }
+
+    public record AddClueRequest(
+            String categoryId,
+            String categoryTitle,
+            Integer value,
+            @NotBlank String prompt,
+            @NotBlank String response,
+            String explanation,
+            String sourcePath,
+            Boolean dailyDouble
+    ) {
+    }
+
+    /**
+     * Bulk import payload. Accept either {@code boards: [...]} or a top-level array
+     * deserialized into {@code boards}.
+     */
+    public record BulkUploadRequest(
+            List<CreateSavedBoardRequest> boards,
+            Boolean skipDuplicates
+    ) {
+    }
+
+    public record BulkUploadItemResult(
+            int index,
+            String title,
+            String status,
+            String id,
+            String message
+    ) {
+    }
+
+    public record BulkUploadResponse(
+            int created,
+            int skipped,
+            int failed,
+            List<BulkUploadItemResult> results
+    ) {
+    }
+
     public record ActionRequest(
             @NotBlank String playerId,
             @NotBlank String type,
