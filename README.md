@@ -127,11 +127,22 @@ cd server && mvn test
 cd client && npm test
 ```
 
+## Docs
+
+| Doc | Description |
+|-----|-------------|
+| [`docs/figma.md`](docs/figma.md) | Import SVG diagrams into Figma Free; UI flow, wireframes, design tokens |
+| [`docs/white-label.md`](docs/white-label.md) | Logo + color scheme white-label planning and implementation checklist |
+
+Diagram source files: [`design/figma/`](design/figma/).
+
 ## Layout
 
 ```text
 client/     Vue 3 + STOMP multiplayer UI
 server/     Spring Boot game + ingest/pattern/question strategies
 samples/    sample-reactor, sample-gradle, sample-vue, sample-python
+design/     Figma-importable SVG UI diagrams
+docs/       Figma and white-label documentation
 NOTICE      attribution for skgraph-derived Maven/OSGi ports
 ```
