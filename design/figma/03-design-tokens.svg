@@ -1,0 +1,122 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="900" viewBox="0 0 1200 900" fill="none">
+  <title>Team Jeopardy  Design Tokens (white-label ready)</title>
+
+  <rect width="1200" height="900" fill="#071225"/>
+  <text x="60" y="52" fill="#f4f7ff" font-family="Arial, Helvetica, sans-serif" font-size="32" font-weight="700">Design Tokens</text>
+  <text x="60" y="84" fill="#a9b7d4" font-family="Arial, Helvetica, sans-serif" font-size="14">CSS variables from client/src/styles.css · use these when white-labeling logo + colors</text>
+
+  <!-- Color swatches -->
+  <g id="colors" transform="translate(60, 120)">
+    <text x="0" y="0" fill="#f0d060" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="700" letter-spacing="2">BRAND COLORS</text>
+
+    <!-- Row 1 -->
+    <g transform="translate(0, 24)">
+      <rect width="140" height="100" rx="12" fill="#071225" stroke="#a9b7d4" stroke-opacity="0.3"/>
+      <text x="16" y="78" fill="#f4f7ff" font-size="11" font-weight="700">background</text>
+      <text x="16" y="92" fill="#a9b7d4" font-size="10">#071225</text>
+
+      <g transform="translate(160, 0)">
+        <rect width="140" height="100" rx="12" fill="#0f1b33"/>
+        <text x="16" y="78" fill="#f4f7ff" font-size="11" font-weight="700">--ink</text>
+        <text x="16" y="92" fill="#a9b7d4" font-size="10">#0f1b33</text>
+      </g>
+      <g transform="translate(320, 0)">
+        <rect width="140" height="100" rx="12" fill="#0c1c3a"/>
+        <text x="16" y="78" fill="#f4f7ff" font-size="11" font-weight="700">--panel</text>
+        <text x="16" y="92" fill="#a9b7d4" font-size="10">rgba panel</text>
+      </g>
+      <g transform="translate(480, 0)">
+        <rect width="140" height="100" rx="12" fill="#f0d060"/>
+        <text x="16" y="78" fill="#1a1400" font-size="11" font-weight="700">--gold</text>
+        <text x="16" y="92" fill="#1a1400" font-size="10">#f0d060</text>
+      </g>
+      <g transform="translate(640, 0)">
+        <rect width="140" height="100" rx="12" fill="#c9a227"/>
+        <text x="16" y="78" fill="#1a1400" font-size="11" font-weight="700">--gold-deep</text>
+        <text x="16" y="92" fill="#1a1400" font-size="10">#c9a227</text>
+      </g>
+      <g transform="translate(800, 0)">
+        <rect width="140" height="100" rx="12" fill="#0b3d91"/>
+        <text x="16" y="78" fill="#f4f7ff" font-size="11" font-weight="700">--board</text>
+        <text x="16" y="92" fill="#a9b7d4" font-size="10">#0b3d91</text>
+      </g>
+      <g transform="translate(960, 0)">
+        <rect width="140" height="100" rx="12" fill="#1152c0"/>
+        <text x="16" y="78" fill="#f4f7ff" font-size="11" font-weight="700">--board-cell</text>
+        <text x="16" y="92" fill="#a9b7d4" font-size="10">#1152c0</text>
+      </g>
+    </g>
+
+    <!-- Row 2 -->
+    <g transform="translate(0, 150)">
+      <rect width="140" height="100" rx="12" fill="#f4f7ff"/>
+      <text x="16" y="78" fill="#071225" font-size="11" font-weight="700">--text</text>
+      <text x="16" y="92" fill="#071225" font-size="10">#f4f7ff</text>
+
+      <g transform="translate(160, 0)">
+        <rect width="140" height="100" rx="12" fill="#a9b7d4"/>
+        <text x="16" y="78" fill="#071225" font-size="11" font-weight="700">--muted</text>
+        <text x="16" y="92" fill="#071225" font-size="10">#a9b7d4</text>
+      </g>
+      <g transform="translate(320, 0)">
+        <rect width="140" height="100" rx="12" fill="#3ecf8e"/>
+        <text x="16" y="78" fill="#042416" font-size="11" font-weight="700">--ok</text>
+        <text x="16" y="92" fill="#042416" font-size="10">#3ecf8e</text>
+      </g>
+      <g transform="translate(480, 0)">
+        <rect width="140" height="100" rx="12" fill="#e85d4c"/>
+        <text x="16" y="78" fill="#fff" font-size="11" font-weight="700">--danger</text>
+        <text x="16" y="92" fill="#fff" font-size="10">#e85d4c</text>
+      </g>
+    </g>
+  </g>
+
+  <!-- Typography -->
+  <g id="typography" transform="translate(60, 420)">
+    <text x="0" y="0" fill="#f0d060" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="700" letter-spacing="2">TYPOGRAPHY</text>
+    <rect y="16" width="520" height="140" rx="12" fill="#0c1c3a" stroke="#a9b7d4" stroke-opacity="0.2"/>
+    <text x="24" y="56" fill="#f4f7ff" font-family="Arial, Helvetica, sans-serif" font-size="28" font-weight="700">Bebas Neue · .brand headings</text>
+    <text x="24" y="96" fill="#a9b7d4" font-family="Arial, Helvetica, sans-serif" font-size="16">Source Sans 3 · body, buttons, inputs</text>
+    <text x="24" y="130" fill="#a9b7d4" font-family="Arial, Helvetica, sans-serif" font-size="12">Loaded from Google Fonts in client/index.html</text>
+  </g>
+
+  <!-- White label slots -->
+  <g id="white-label" transform="translate(620, 420)">
+    <text x="0" y="0" fill="#f0d060" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="700" letter-spacing="2">WHITE-LABEL SLOTS</text>
+    <rect y="16" width="520" height="140" rx="12" fill="#0c1c3a" stroke="#f0d060" stroke-opacity="0.35"/>
+
+    <rect x="24" y="40" width="80" height="80" rx="10" fill="#0f1b33" stroke="#f4f7ff" stroke-opacity="0.2" stroke-dasharray="4 4"/>
+    <text x="44" y="88" fill="#a9b7d4" font-size="10">LOGO</text>
+
+    <text x="120" y="56" fill="#f4f7ff" font-size="16" font-weight="700">App name (replace "Team Jeopardy")</text>
+    <text x="120" y="80" fill="#a9b7d4" font-size="12">App.vue header · index.html title</text>
+    <text x="120" y="100" fill="#a9b7d4" font-size="12">SharedDisplay fallback title</text>
+    <text x="120" y="120" fill="#a9b7d4" font-size="12">LobbyView default board title</text>
+    <text x="120" y="140" fill="#f0d060" font-size="11">Override --gold, --board, background gradients</text>
+  </g>
+
+  <!-- Component map -->
+  <g id="component-map" transform="translate(60, 600)">
+    <text x="0" y="0" fill="#f0d060" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="700" letter-spacing="2">VUE COMPONENT MAP</text>
+    <rect y="16" width="1080" height="220" rx="12" fill="#0f1b33" stroke="#a9b7d4" stroke-opacity="0.2"/>
+
+    <text x="24" y="52" fill="#f4f7ff" font-size="13" font-weight="700">client/src/</text>
+    <text x="24" y="78" fill="#a9b7d4" font-size="12">App.vue  routing shell, WebSocket, session state</text>
+    <text x="24" y="100" fill="#a9b7d4" font-size="12">styles.css  global CSS variables + button/input styles</text>
+    <text x="24" y="122" fill="#a9b7d4" font-size="12">api.js  REST to Spring Boot /api/*</text>
+    <text x="24" y="144" fill="#a9b7d4" font-size="12">useGameSocket.js  STOMP over SockJS /ws</text>
+
+    <text x="420" y="52" fill="#f4f7ff" font-size="13" font-weight="700">components/</text>
+    <text x="420" y="78" fill="#a9b7d4" font-size="12">LobbyView · WaitingRoom · ModeratorConsole</text>
+    <text x="420" y="100" fill="#a9b7d4" font-size="12">BoardView · ClueStage · HostCluePreview</text>
+    <text x="420" y="122" fill="#a9b7d4" font-size="12">Scorebar · SharedDisplay · QuestionBankAdmin</text>
+
+    <text x="780" y="52" fill="#f4f7ff" font-size="13" font-weight="700">Figma learning exercises</text>
+    <text x="780" y="78" fill="#a9b7d4" font-size="12">1. Recolor swatches ’ create local styles</text>
+    <text x="780" y="100" fill="#a9b7d4" font-size="12">2. Duplicate wireframe ’ high-fi mock</text>
+    <text x="780" y="122" fill="#a9b7d4" font-size="12">3. Add logo frame + auto-layout header</text>
+    <text x="780" y="144" fill="#a9b7d4" font-size="12">4. Prototype flow arrows between frames</text>
+    <text x="780" y="166" fill="#a9b7d4" font-size="12">5. Export PNG for stakeholder review</text>
+  </g>
+</svg>

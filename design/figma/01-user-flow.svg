@@ -1,0 +1,133 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900" fill="none">
+  <title>Team Jeopardy  User Flow (import into Figma)</title>
+  <desc>Screen flow for the Vue 3 client. Import via File ’ Import in free Figma.</desc>
+
+  <!-- Background -->
+  <rect width="1600" height="900" fill="#071225"/>
+
+  <!-- Title block -->
+  <g id="title-block">
+    <text x="80" y="72" fill="#f4f7ff" font-family="Arial, Helvetica, sans-serif" font-size="36" font-weight="700">Team Jeopardy  User Flow</text>
+    <text x="80" y="108" fill="#a9b7d4" font-family="Arial, Helvetica, sans-serif" font-size="16">Vue 3 client · view modes via ?view= query param · import this SVG into free Figma to explore layers</text>
+  </g>
+
+  <!-- Legend -->
+  <g id="legend" transform="translate(80, 130)">
+    <rect width="1440" height="56" rx="12" fill="#0c1c3a" stroke="#f0d060" stroke-width="1" stroke-opacity="0.35"/>
+    <circle cx="36" cy="28" r="10" fill="#f0d060"/>
+    <text x="56" y="34" fill="#f4f7ff" font-family="Arial, Helvetica, sans-serif" font-size="14">Entry / decision</text>
+    <rect x="220" y="18" width="120" height="20" rx="6" fill="#1152c0"/>
+    <text x="356" y="34" fill="#f4f7ff" font-family="Arial, Helvetica, sans-serif" font-size="14">Screen (component)</text>
+    <rect x="540" y="18" width="120" height="20" rx="6" fill="#3ecf8e"/>
+    <text x="676" y="34" fill="#042416" font-family="Arial, Helvetica, sans-serif" font-size="14">Game phase</text>
+    <rect x="820" y="18" width="120" height="20" rx="6" fill="#c084fc"/>
+    <text x="956" y="34" fill="#f4f7ff" font-family="Arial, Helvetica, sans-serif" font-size="14">Admin / special view</text>
+  </g>
+
+  <!-- Row 1: Entry points -->
+  <g id="entry-url">
+    <rect x="680" y="230" width="240" height="64" rx="32" fill="#f0d060"/>
+    <text x="800" y="258" text-anchor="middle" fill="#1a1400" font-family="Arial, Helvetica, sans-serif" font-size="15" font-weight="700">Open app URL</text>
+    <text x="800" y="278" text-anchor="middle" fill="#1a1400" font-family="Arial, Helvetica, sans-serif" font-size="12">client/ (default view)</text>
+  </g>
+
+  <!-- Branch: view modes -->
+  <g id="view-modes">
+    <line x1="800" y1="294" x2="800" y2="330" stroke="#a9b7d4" stroke-width="2" marker-end="url(#arrow)"/>
+    <rect x="620" y="330" width="360" height="52" rx="10" fill="#0c1c3a" stroke="#a9b7d4" stroke-width="1"/>
+    <text x="800" y="362" text-anchor="middle" fill="#f4f7ff" font-family="Arial, Helvetica, sans-serif" font-size="14">?view= display | admin | (default app)</text>
+  </g>
+
+  <!-- Three columns -->
+  <!-- LEFT: Default app flow -->
+  <g id="default-app-flow">
+    <text x="200" y="430" text-anchor="middle" fill="#f0d060" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="700" letter-spacing="2">DEFAULT APP</text>
+
+    <rect x="80" y="450" width="240" height="72" rx="12" fill="#1152c0"/>
+    <text x="200" y="482" text-anchor="middle" fill="#f4f7ff" font-family="Arial, Helvetica, sans-serif" font-size="16" font-weight="700">LobbyView</text>
+    <text x="200" y="504" text-anchor="middle" fill="#a9b7d4" font-family="Arial, Helvetica, sans-serif" font-size="12">Create room · Join lobby</text>
+
+    <line x1="200" y1="522" x2="200" y2="548" stroke="#a9b7d4" stroke-width="2" marker-end="url(#arrow)"/>
+
+    <rect x="80" y="548" width="240" height="72" rx="12" fill="#1152c0"/>
+    <text x="200" y="578" text-anchor="middle" fill="#f4f7ff" font-family="Arial, Helvetica, sans-serif" font-size="16" font-weight="700">WaitingRoom</text>
+    <text x="200" y="600" text-anchor="middle" fill="#a9b7d4" font-family="Arial, Helvetica, sans-serif" font-size="12">Player waits for admit</text>
+
+    <line x1="200" y1="620" x2="200" y2="646" stroke="#a9b7d4" stroke-width="2" marker-end="url(#arrow)"/>
+
+    <rect x="80" y="646" width="240" height="72" rx="12" fill="#3ecf8e"/>
+    <text x="200" y="676" text-anchor="middle" fill="#042416" font-family="Arial, Helvetica, sans-serif" font-size="16" font-weight="700">BOARD phase</text>
+    <text x="200" y="698" text-anchor="middle" fill="#042416" font-family="Arial, Helvetica, sans-serif" font-size="12">BoardView · Scorebar</text>
+
+    <line x1="200" y1="718" x2="200" y2="744" stroke="#a9b7d4" stroke-width="2" marker-end="url(#arrow)"/>
+
+    <rect x="80" y="744" width="240" height="72" rx="12" fill="#3ecf8e"/>
+    <text x="200" y="774" text-anchor="middle" fill="#042416" font-family="Arial, Helvetica, sans-serif" font-size="16" font-weight="700">CLUE phases</text>
+    <text x="200" y="796" text-anchor="middle" fill="#042416" font-family="Arial, Helvetica, sans-serif" font-size="12">ClueStage · HostCluePreview</text>
+  </g>
+
+  <!-- CENTER: Host path -->
+  <g id="host-flow">
+    <text x="800" y="430" text-anchor="middle" fill="#f0d060" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="700" letter-spacing="2">HOST (MODERATOR)</text>
+
+    <rect x="680" y="450" width="240" height="72" rx="12" fill="#1152c0"/>
+    <text x="800" y="482" text-anchor="middle" fill="#f4f7ff" font-family="Arial, Helvetica, sans-serif" font-size="16" font-weight="700">LobbyView</text>
+    <text x="800" y="504" text-anchor="middle" fill="#a9b7d4" font-family="Arial, Helvetica, sans-serif" font-size="12">Create room ’ isHost=true</text>
+
+    <line x1="800" y1="522" x2="800" y2="548" stroke="#a9b7d4" stroke-width="2" marker-end="url(#arrow)"/>
+
+    <rect x="680" y="548" width="240" height="100" rx="12" fill="#1152c0"/>
+    <text x="800" y="578" text-anchor="middle" fill="#f4f7ff" font-family="Arial, Helvetica, sans-serif" font-size="16" font-weight="700">ModeratorConsole</text>
+    <text x="800" y="600" text-anchor="middle" fill="#a9b7d4" font-family="Arial, Helvetica, sans-serif" font-size="12">Ingest board (Maven, GitHub&)</text>
+    <text x="800" y="618" text-anchor="middle" fill="#a9b7d4" font-family="Arial, Helvetica, sans-serif" font-size="12">Admit players · Start game</text>
+    <text x="800" y="636" text-anchor="middle" fill="#a9b7d4" font-family="Arial, Helvetica, sans-serif" font-size="12">Open shared display URL</text>
+
+    <line x1="800" y1="648" x2="800" y2="674" stroke="#a9b7d4" stroke-width="2" marker-end="url(#arrow)"/>
+
+    <rect x="680" y="674" width="240" height="72" rx="12" fill="#3ecf8e"/>
+    <text x="800" y="704" text-anchor="middle" fill="#042416" font-family="Arial, Helvetica, sans-serif" font-size="16" font-weight="700">HOST_PREVIEW</text>
+    <text x="800" y="726" text-anchor="middle" fill="#042416" font-family="Arial, Helvetica, sans-serif" font-size="12">HostCluePreview ’ open buzzers</text>
+
+    <line x1="800" y1="746" x2="800" y2="772" stroke="#a9b7d4" stroke-width="2" marker-end="url(#arrow)"/>
+
+    <rect x="680" y="772" width="240" height="72" rx="12" fill="#3ecf8e"/>
+    <text x="800" y="802" text-anchor="middle" fill="#042416" font-family="Arial, Helvetica, sans-serif" font-size="16" font-weight="700">Judge · Reveal</text>
+    <text x="800" y="824" text-anchor="middle" fill="#042416" font-family="Arial, Helvetica, sans-serif" font-size="12">ClueStage (host controls)</text>
+  </g>
+
+  <!-- RIGHT: Special views -->
+  <g id="special-views">
+    <text x="1280" y="430" text-anchor="middle" fill="#f0d060" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="700" letter-spacing="2">SPECIAL VIEWS</text>
+
+    <rect x="1160" y="450" width="240" height="88" rx="12" fill="#c084fc"/>
+    <text x="1280" y="482" text-anchor="middle" fill="#f4f7ff" font-family="Arial, Helvetica, sans-serif" font-size="16" font-weight="700">?view=display</text>
+    <text x="1280" y="504" text-anchor="middle" fill="#e9d5ff" font-family="Arial, Helvetica, sans-serif" font-size="12">SharedDisplay.vue</text>
+    <text x="1280" y="522" text-anchor="middle" fill="#e9d5ff" font-family="Arial, Helvetica, sans-serif" font-size="12">Projector / TV screen</text>
+
+    <rect x="1160" y="560" width="240" height="88" rx="12" fill="#c084fc"/>
+    <text x="1280" y="592" text-anchor="middle" fill="#f4f7ff" font-family="Arial, Helvetica, sans-serif" font-size="16" font-weight="700">?view=admin</text>
+    <text x="1280" y="614" text-anchor="middle" fill="#e9d5ff" font-family="Arial, Helvetica, sans-serif" font-size="12">QuestionBankAdmin.vue</text>
+    <text x="1280" y="632" text-anchor="middle" fill="#e9d5ff" font-family="Arial, Helvetica, sans-serif" font-size="12">SQLite clue CRUD</text>
+  </g>
+
+  <!-- Cross links -->
+  <g id="cross-links" stroke="#a9b7d4" stroke-width="1.5" stroke-dasharray="6 4" fill="none" opacity="0.7">
+    <path d="M920 594 L1080 594 L1080 494 L1160 494"/>
+    <path d="M320 682 L520 682 L520 710 L680 710"/>
+    <text x="990" y="586" fill="#a9b7d4" font-family="Arial, Helvetica, sans-serif" font-size="11">opens display URL</text>
+    <text x="420" y="672" fill="#a9b7d4" font-family="Arial, Helvetica, sans-serif" font-size="11">same game state via WebSocket</text>
+  </g>
+
+  <!-- Game phases strip -->
+  <g id="game-phases">
+    <text x="80" y="860" fill="#a9b7d4" font-family="Arial, Helvetica, sans-serif" font-size="12" font-weight="700">GAME PHASES (server):</text>
+    <text x="280" y="860" fill="#f4f7ff" font-family="Arial, Helvetica, sans-serif" font-size="12">LOBBY ’ BOARD ’ HOST_PREVIEW ’ CLUE_OPEN ’ BUZZ_LOCKED ’ ANSWER_REVEALED ’ FINISHED</text>
+  </g>
+
+  <defs>
+    <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 Z" fill="#a9b7d4"/>
+    </marker>
+  </defs>
+</svg>
