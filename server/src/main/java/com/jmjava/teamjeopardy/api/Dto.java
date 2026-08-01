@@ -75,6 +75,54 @@ public final class Dto {
     public record IngestResponse(GameSnapshot snapshot, Board board, Map<String, Object> ingestSummary) {
     }
 
+    public record LoadBoardRequest(
+            @NotBlank String roomId,
+            @NotBlank String playerId,
+            @NotBlank String savedBoardId
+    ) {
+    }
+
+    public record CreateSavedBoardRequest(
+            @NotBlank String title,
+            String sourceKind,
+            String sourceKey,
+            String sourceRoot,
+            String questionHints,
+            List<String> questionFocuses,
+            List<CategoryInput> categories
+    ) {
+    }
+
+    public record CategoryInput(
+            String id,
+            String title,
+            List<ClueInput> clues
+    ) {
+    }
+
+    public record ClueInput(
+            String id,
+            Integer value,
+            @NotBlank String prompt,
+            @NotBlank String response,
+            String explanation,
+            String sourcePath,
+            Boolean dailyDouble
+    ) {
+    }
+
+    public record AddClueRequest(
+            String categoryId,
+            String categoryTitle,
+            Integer value,
+            @NotBlank String prompt,
+            @NotBlank String response,
+            String explanation,
+            String sourcePath,
+            Boolean dailyDouble
+    ) {
+    }
+
     public record ActionRequest(
             @NotBlank String playerId,
             @NotBlank String type,

@@ -1,5 +1,6 @@
 <script setup>
-import { computed, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
+import { listQuestionBank } from '../api'
 
 const props = defineProps({
   snapshot: Object,
@@ -20,7 +21,9 @@ const emit = defineEmits([
   'admit-all',
   'start',
   'open-display',
-  'browse-github'
+  'browse-github',
+  'load-saved',
+  'open-admin'
 ])
 
 const focusOptions = [
@@ -48,6 +51,22 @@ const hints = reactive({
 
 const folderChoices = ref([])
 const browseBusy = ref(false)
+const savedBoards = ref([])
+const savedBusy = ref(false)
+
+async function refreshSavedBoards() {
+  savedBusy.value = true
+  try {
+    const data = await listQuestionBank(30)
+    savedBoards.value = data.boards || []
+  } catch {
+    savedBoards.value = []
+  } finally {
+    savedBusy.value = false
+  }
+}
+
+onMounted(refreshSavedBoards)
 
 const waiting = computed(() =>
   (props.snapshot?.players || []).filter((p) => !p.host && !p.admitted)
@@ -259,6 +278,45 @@ function addFolder(path) {
 
             <p v-if="snapshot?.board" class="ready">Board ready · {{ snapshot.board.title }}</p>
             <pre v-if="ingestSummary" class="summary">{{ ingestSummary }}</pre>
+
+            <div class="saved-box">
+              <div class="saved-head">
+                <h4>Saved boards</h4>
+                <div class="row tight">
+                  <button
+                    type="button"
+                    class="secondary slim"
+                    :disabled="savedBusy || busy"
+                    @click="refreshSavedBoards"
+                  >
+                    {{ savedBusy ? 'Loading…' : 'Refresh' }}
+                  </button>
+                  <button type="button" class="secondary slim" @click="emit('open-admin')">
+                    DB maintenance
+                  </button>
+                </div>
+              </div>
+              <p class="muted">Reuse a previously generated board without re-ingest.</p>
+              <ul v-if="savedBoards.length" class="saved-list">
+                <li v-for="board in savedBoards" :key="board.id">
+                  <div>
+                    <strong>{{ board.title }}</strong>
+                    <span class="muted">
+                      {{ board.sourceKind }} · {{ board.clueCount }} clues
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    class="ok slim"
+                    :disabled="busy"
+                    @click="emit('load-saved', board.id)"
+                  >
+                    Load
+                  </button>
+                </li>
+              </ul>
+              <p v-else class="muted empty">No saved boards yet.</p>
+            </div>
           </div>
         </article>
 
@@ -401,10 +459,25 @@ textarea, .fields input {
 .check {
   display: flex; align-items: center; gap: 0.5rem; margin-top: 0.65rem; color: var(--text);
 }
-.github-box {
+.github-box,
+.saved-box {
   margin-top: 1rem; padding: 0.9rem 1rem; border-radius: 14px;
   background: rgba(0, 0, 0, 0.18); border: 1px solid rgba(244, 247, 255, 0.06);
 }
+.saved-head {
+  display: flex; justify-content: space-between; gap: 0.75rem; align-items: center;
+}
+.saved-head h4 { margin: 0; }
+.row.tight { margin-top: 0; }
+.saved-list {
+  list-style: none; margin: 0.65rem 0 0; padding: 0; display: grid; gap: 0.45rem;
+}
+.saved-list li {
+  display: flex; justify-content: space-between; gap: 0.75rem; align-items: center;
+  padding: 0.45rem 0; border-top: 1px solid rgba(244, 247, 255, 0.06);
+}
+.saved-list li:first-child { border-top: 0; }
+.saved-list li > div { display: grid; gap: 0.1rem; }
 .folder-list {
   display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.75rem; max-height: 9rem; overflow: auto;
 }

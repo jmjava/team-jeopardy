@@ -18,6 +18,7 @@ async function request(path, options = {}) {
     }
     throw new Error(detail)
   }
+  if (response.status === 204) return null
   return response.json()
 }
 
@@ -37,6 +38,13 @@ export function joinRoom({ code, displayName, teamName }) {
 
 export function ingestBoard(payload) {
   return request('/api/rooms/ingest', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  })
+}
+
+export function loadSavedBoard(payload) {
+  return request('/api/rooms/load-board', {
     method: 'POST',
     body: JSON.stringify(payload)
   })
@@ -67,4 +75,50 @@ export function getRoomByCode(code) {
 
 export function getHealth() {
   return request('/api/health')
+}
+
+export function listQuestionBank(limit = 100) {
+  return request(`/api/question-bank?limit=${limit}`)
+}
+
+export function getQuestionBankBoard(id) {
+  return request(`/api/question-bank/${encodeURIComponent(id)}`)
+}
+
+export function createQuestionBankBoard(payload) {
+  return request('/api/question-bank', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  })
+}
+
+export function addQuestionBankClue(boardId, payload) {
+  return request(`/api/question-bank/${encodeURIComponent(boardId)}/clues`, {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  })
+}
+
+export function deleteQuestionBankBoard(id) {
+  return request(`/api/question-bank/${encodeURIComponent(id)}`, {
+    method: 'DELETE'
+  })
+}
+
+export function deleteQuestionBankClue(clueId) {
+  return request(`/api/question-bank/clues/${encodeURIComponent(clueId)}`, {
+    method: 'DELETE'
+  })
+}
+
+export function deleteAllQuestionBank() {
+  return request('/api/question-bank', {
+    method: 'DELETE'
+  })
+}
+
+export function searchQuestionBankClues(q = '', limit = 100) {
+  const params = new URLSearchParams({ limit: String(limit) })
+  if (q) params.set('q', q)
+  return request(`/api/question-bank/clues?${params}`)
 }

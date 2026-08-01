@@ -6,7 +6,7 @@ defineProps({
   health: Object
 })
 
-const emit = defineEmits(['create', 'join'])
+const emit = defineEmits(['create', 'join', 'open-admin'])
 
 const createForm = reactive({
   hostName: 'Host',
@@ -30,6 +30,12 @@ const joinForm = reactive({
       </p>
       <p class="muted" v-if="health">
         Engine {{ health.engine }} · {{ (health.supported || []).join(' · ') }}
+      </p>
+      <p class="muted tiny">
+        <button type="button" class="secondary slim" @click="emit('open-admin')">
+          Question bank DB
+        </button>
+        Maintain saved boards/clues in SQLite.
       </p>
     </div>
 
@@ -74,6 +80,19 @@ const joinForm = reactive({
   display: grid;
   gap: 1.5rem;
   padding-top: 0.5rem;
+}
+
+.tiny {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  align-items: center;
+  margin-top: 0.85rem;
+}
+
+.slim {
+  padding: 0.45rem 0.8rem;
+  font-size: 0.88rem;
 }
 
 .copy {

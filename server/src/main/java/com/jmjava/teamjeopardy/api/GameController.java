@@ -4,6 +4,7 @@ import com.jmjava.teamjeopardy.game.GameAction;
 import com.jmjava.teamjeopardy.game.GameRoomService;
 import com.jmjava.teamjeopardy.game.GameSnapshot;
 import com.jmjava.teamjeopardy.github.GitHubRepoFetcher;
+import com.jmjava.teamjeopardy.persist.QuestionBankService;
 import com.jmjava.teamjeopardy.quiz.Board;
 import com.jmjava.teamjeopardy.quiz.QuestionHints;
 import jakarta.validation.Valid;
@@ -29,15 +30,18 @@ public class GameController {
 
     private final GameRoomService gameRoomService;
     private final BoardFactory boardFactory;
+    private final QuestionBankService questionBankService;
     private final SimpMessagingTemplate messagingTemplate;
 
     public GameController(
             GameRoomService gameRoomService,
             BoardFactory boardFactory,
+            QuestionBankService questionBankService,
             SimpMessagingTemplate messagingTemplate
     ) {
         this.gameRoomService = gameRoomService;
         this.boardFactory = boardFactory;
+        this.questionBankService = questionBankService;
         this.messagingTemplate = messagingTemplate;
     }
 
@@ -76,14 +80,17 @@ public class GameController {
     public Dto.IngestResponse ingest(@Valid @RequestBody Dto.IngestRequest request) throws IOException {
         BoardFactory.BuiltBoard built = buildBoard(request);
         Board board = built.board();
+        QuestionHints hints = QuestionHints.of(request.questionHints(), request.questionFocuses());
+        Map<String, Object> summary = new LinkedHashMap<>(built.summary());
+        persistGeneratedBoard(request, board, summary, hints);
         GameSnapshot snapshot = gameRoomService.installBoard(
                 request.roomId(),
                 request.playerId(),
                 board,
-                request.questionHints()
+                hints.combined()
         );
         broadcast(request.roomId());
-        return new Dto.IngestResponse(snapshot, board, built.summary());
+        return new Dto.IngestResponse(snapshot, board, summary);
     }
 
     /**
@@ -174,7 +181,44 @@ public class GameController {
         body.put("questionFocuses", List.of(
                 "patterns", "pull-requests", "qa", "apis", "architecture", "components", "security"
         ));
+        body.put("questionBank", questionBankService.status());
         return body;
+    }
+
+    private void persistGeneratedBoard(
+            Dto.IngestRequest request,
+            Board board,
+            Map<String, Object> summary,
+            QuestionHints hints
+    ) {
+        String sampleType = request.sampleType();
+        String sourceKind;
+        String sourceKey;
+        if (BoardFactory.isPullsType(sampleType)) {
+            sourceKind = "pulls";
+            sourceKey = QuestionBankService.sourceKeyForPulls(blankTo(request.repo(), boardFactory.defaultRepo()));
+        } else if (BoardFactory.isGitHubType(sampleType)
+                || (request.repo() != null && !request.repo().isBlank()
+                && Boolean.FALSE.equals(request.useSample())
+                && (request.path() == null || request.path().isBlank()))) {
+            sourceKind = "github";
+            String repo = blankTo(request.repo(), boardFactory.defaultRepo());
+            String ref = BoardFactory.resolveRef(request.ref(), request.branch(), request.commitSha());
+            sourceKey = QuestionBankService.sourceKeyForGithub(repo, ref, request.folders());
+        } else if (request.useSample() == null || request.useSample()) {
+            sourceKind = "sample";
+            sourceKey = QuestionBankService.sourceKeyForSample(sampleType);
+        } else {
+            sourceKind = "path";
+            sourceKey = QuestionBankService.sourceKeyForPath(request.path());
+        }
+
+        questionBankService.saveGenerated(board, summary, sourceKind, sourceKey, hints)
+                .ifPresent(saved -> {
+                    summary.put("savedBoardId", saved.id());
+                    summary.put("fingerprint", saved.fingerprint());
+                    summary.put("persisted", true);
+                });
     }
 
     private void broadcast(String roomId) {

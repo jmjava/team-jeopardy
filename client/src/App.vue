@@ -1,9 +1,18 @@
 <script setup>
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
-import { browseGithub, createRoom, getHealth, ingestBoard, joinRoom, postAction } from './api'
+import {
+  browseGithub,
+  createRoom,
+  getHealth,
+  ingestBoard,
+  joinRoom,
+  loadSavedBoard,
+  postAction
+} from './api'
 import { connectGameSocket } from './useGameSocket'
 import LobbyView from './components/LobbyView.vue'
 import ModeratorConsole from './components/ModeratorConsole.vue'
+import QuestionBankAdmin from './components/QuestionBankAdmin.vue'
 import WaitingRoom from './components/WaitingRoom.vue'
 import BoardView from './components/BoardView.vue'
 import ClueStage from './components/ClueStage.vue'
@@ -12,7 +21,10 @@ import Scorebar from './components/Scorebar.vue'
 import SharedDisplay from './components/SharedDisplay.vue'
 
 const params = new URLSearchParams(window.location.search)
-const viewMode = ref(params.get('view') === 'display' ? 'display' : 'app')
+const initialView = params.get('view')
+const viewMode = ref(
+  initialView === 'display' ? 'display' : initialView === 'admin' ? 'admin' : 'app'
+)
 
 const session = reactive({
   roomId: '',
@@ -248,6 +260,37 @@ async function onBrowseGithub(payload) {
   }
 }
 
+async function onLoadSavedBoard(savedBoardId) {
+  error.value = ''
+  busy.value = true
+  try {
+    const result = await loadSavedBoard({
+      roomId: session.roomId,
+      playerId: session.playerId,
+      savedBoardId
+    })
+    snapshot.value = result.snapshot
+    ingestSummary.value = result.ingestSummary
+  } catch (err) {
+    error.value = err.message
+  } finally {
+    busy.value = false
+  }
+}
+
+function openQuestionBankAdmin() {
+  const url = new URL(window.location.href)
+  url.searchParams.set('view', 'admin')
+  window.open(url.toString(), '_blank', 'noopener')
+}
+
+function leaveAdmin() {
+  const url = new URL(window.location.href)
+  url.searchParams.delete('view')
+  window.history.replaceState({}, '', url)
+  viewMode.value = 'app'
+}
+
 function openDisplay() {
   if (displayUrl.value) {
     window.open(displayUrl.value, '_blank', 'noopener')
@@ -293,6 +336,16 @@ onBeforeUnmount(() => socket?.disconnect())
 <template>
   <SharedDisplay v-if="viewMode === 'display'" :snapshot="snapshot" />
 
+  <div v-else-if="viewMode === 'admin'" class="shell">
+    <header class="top">
+      <div>
+        <p class="eyebrow">SQLite · question bank</p>
+        <h1 class="brand">Team Jeopardy</h1>
+      </div>
+    </header>
+    <QuestionBankAdmin @back="leaveAdmin" />
+  </div>
+
   <div v-else class="shell">
     <header class="top">
       <div>
@@ -323,6 +376,7 @@ onBeforeUnmount(() => socket?.disconnect())
       :health="health"
       @create="onCreate"
       @join="onJoin"
+      @open-admin="openQuestionBankAdmin"
     />
 
     <template v-else>
@@ -344,6 +398,8 @@ onBeforeUnmount(() => socket?.disconnect())
         @ingest-github="onIngestGithub"
         @ingest-pulls="onIngestPulls"
         @browse-github="onBrowseGithub"
+        @load-saved="onLoadSavedBoard"
+        @open-admin="openQuestionBankAdmin"
         @admit="(playerId) => runAction('ADMIT_PLAYER', { playerId })"
         @admit-all="runAction('ADMIT_ALL')"
         @start="runAction('START')"
