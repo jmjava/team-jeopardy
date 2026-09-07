@@ -2,12 +2,13 @@ package com.jmjava.teamjeopardy.api;
 
 import com.jmjava.teamjeopardy.game.GameAction;
 import com.jmjava.teamjeopardy.game.GameRoomService;
-import com.jmjava.teamjeopardy.game.GameSnapshot;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.messaging.handler.annotation.DestinationVariable;
 import org.springframework.messaging.handler.annotation.MessageMapping;
 import org.springframework.messaging.handler.annotation.Payload;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Controller;
+import org.springframework.web.server.ResponseStatusException;
 
 /**
  * Bidirectional STOMP channel.
@@ -18,25 +19,24 @@ import org.springframework.stereotype.Controller;
 @Controller
 public class GameWsController {
 
-    private final GameRoomService gameRoomService;
-    private final SimpMessagingTemplate messagingTemplate;
+    private static final Logger log = LoggerFactory.getLogger(GameWsController.class);
 
-    public GameWsController(GameRoomService gameRoomService, SimpMessagingTemplate messagingTemplate) {
+    private final GameRoomService gameRoomService;
+    private final GameBroadcaster broadcaster;
+
+    public GameWsController(GameRoomService gameRoomService, GameBroadcaster broadcaster) {
         this.gameRoomService = gameRoomService;
-        this.messagingTemplate = messagingTemplate;
+        this.broadcaster = broadcaster;
     }
 
     @MessageMapping("/room/{roomId}/action")
     public void handleAction(@DestinationVariable String roomId, @Payload GameAction action) {
-        gameRoomService.applyAction(roomId, action);
-        broadcast(roomId);
-    }
-
-    private void broadcast(String roomId) {
-        GameSnapshot pub = gameRoomService.publicSnapshot(roomId);
-        GameSnapshot host = gameRoomService.hostSnapshot(roomId);
-        messagingTemplate.convertAndSend("/topic/room." + pub.roomId(), pub);
-        messagingTemplate.convertAndSend("/topic/room-code." + pub.code(), pub);
-        messagingTemplate.convertAndSend("/topic/room." + host.roomId() + ".host", host);
+        try {
+            gameRoomService.applyAction(roomId, action);
+            broadcaster.broadcast(roomId);
+        } catch (ResponseStatusException ex) {
+            // Keep the STOMP session open: a lost buzz race must not kick the player.
+            log.info("Rejected {} in room {}: {}", action == null ? null : action.type(), roomId, ex.getReason());
+        }
     }
 }

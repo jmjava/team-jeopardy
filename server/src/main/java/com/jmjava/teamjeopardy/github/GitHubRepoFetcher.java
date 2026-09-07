@@ -323,9 +323,13 @@ public class GitHubRepoFetcher {
                 continue;
             }
             String cleaned = trimSlashes(folder.replace('\\', '/'));
-            if (!cleaned.isBlank() && !cleaned.equals(".")) {
-                out.add(cleaned);
+            if (cleaned.isBlank() || cleaned.equals(".")) {
+                continue;
             }
+            if (cleaned.contains("..") || cleaned.startsWith("/")) {
+                continue;
+            }
+            out.add(cleaned);
         }
         return List.copyOf(out);
     }

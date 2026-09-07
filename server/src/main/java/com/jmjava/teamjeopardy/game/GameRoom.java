@@ -26,6 +26,11 @@ public class GameRoom {
     private final Map<String, BoardCellState> cells = new LinkedHashMap<>();
     private String questionHints = "";
     private int revision;
+    private final Object lock = new Object();
+
+    Object lock() {
+        return lock;
+    }
 
     public GameRoom(String id, String code, String hostPlayerId, String title) {
         this.id = id;

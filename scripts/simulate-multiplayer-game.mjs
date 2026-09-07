@@ -12,11 +12,23 @@
  *   node scripts/simulate-multiplayer-game.mjs [owner/repo] [ref] [folder]
  * Env:
  *   API_BASE (default http://localhost:8080)
+ *   WS_URL (default ws://localhost:8080/stomp)
  *   SKIP_GITHUB=1 to skip GitHub/PR scenarios (samples only)
  *
  * Prefer a branch that contains source (e.g. the feature branch), not an empty main.
  */
+import { connectStomp } from './stomp-client.mjs'
+
+function deriveWsUrl(apiBase) {
+  const url = new URL(apiBase)
+  url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
+  url.pathname = '/stomp'
+  url.search = ''
+  return url.toString()
+}
+
 const API = process.env.API_BASE || 'http://localhost:8080'
+const WS = process.env.WS_URL || deriveWsUrl(API)
 const repo = process.argv[2] || 'jmjava/team-jeopardy'
 const ref = process.argv[3] || process.env.SIM_REF || 'cursor/team-jeopardy-realtime-dc86'
 const folder = process.argv[4] || 'client/src'
@@ -126,6 +138,91 @@ function firstOpenClue(snap) {
   return null
 }
 
+async function playThroughClueStomp(table, { incorrectFirst = true } = {}) {
+  const { roomId, hostId, host, display, players } = table
+  const clue = firstOpenClue(host.latest)
+  assert(clue, 'No unanswered clue')
+
+  host.send(`/app/room/${roomId}/action`, {
+    playerId: hostId,
+    type: 'SELECT_CLUE',
+    payload: { clueId: clue.id }
+  })
+  await host.waitFor((s) => s.phase === 'HOST_PREVIEW', 8000, 'HOST_PREVIEW')
+  assert(host.latest.activeClue?.prompt, 'Host must see prompt in preview')
+  assert(host.latest.activeClue?.response, 'Host must see answer in preview')
+  const publicPreview = await display.waitFor(
+    (s) => s.phase === 'HOST_PREVIEW' && s.revision >= host.latest.revision
+  )
+  assert(!publicPreview.activeClue?.prompt, 'Display must hide prompt during HOST_PREVIEW')
+  assert(!publicPreview.activeClue?.response, 'Display must hide answer during HOST_PREVIEW')
+
+  host.send(`/app/room/${roomId}/action`, { playerId: hostId, type: 'OPEN_BUZZERS', payload: {} })
+  await Promise.all(players.map((p) => p.stomp.waitFor((s) => s.phase === 'CLUE_OPEN')))
+
+  const [p1, p2] = players
+  if (incorrectFirst && p2) {
+    p1.stomp.send(`/app/room/${roomId}/action`, { playerId: p1.playerId, type: 'BUZZ', payload: {} })
+    const locked = await host.waitFor((s) => s.phase === 'BUZZ_LOCKED')
+    assert(locked.activeClue?.buzzedPlayerName, 'Buzz should record player')
+    p2.stomp.send(`/app/room/${roomId}/action`, { playerId: p2.playerId, type: 'BUZZ', payload: {} })
+    await sleep(120)
+    assert(host.latest.phase === 'BUZZ_LOCKED', 'Second buzz must not steal lock')
+    assert(host.latest.activeClue?.buzzedPlayerId === p1.playerId, 'First buzzer should keep lock')
+
+    host.send(`/app/room/${roomId}/action`, { playerId: hostId, type: 'JUDGE', payload: { correct: false } })
+    await p2.stomp.waitFor((s) => s.phase === 'CLUE_OPEN')
+    p2.stomp.send(`/app/room/${roomId}/action`, { playerId: p2.playerId, type: 'BUZZ', payload: {} })
+    await host.waitFor((s) => s.phase === 'BUZZ_LOCKED' && s.activeClue?.buzzedPlayerId === p2.playerId)
+    host.send(`/app/room/${roomId}/action`, { playerId: hostId, type: 'JUDGE', payload: { correct: true } })
+  } else if (p2) {
+    p1.stomp.send(`/app/room/${roomId}/action`, { playerId: p1.playerId, type: 'BUZZ', payload: {} })
+    p2.stomp.send(`/app/room/${roomId}/action`, { playerId: p2.playerId, type: 'BUZZ', payload: {} })
+    const winner = await host.waitFor((s) => s.phase === 'BUZZ_LOCKED')
+    assert(
+      winner.activeClue?.buzzedPlayerId === p1.playerId ||
+        winner.activeClue?.buzzedPlayerId === p2.playerId
+    )
+    host.send(`/app/room/${roomId}/action`, { playerId: hostId, type: 'JUDGE', payload: { correct: true } })
+  } else {
+    p1.stomp.send(`/app/room/${roomId}/action`, { playerId: p1.playerId, type: 'BUZZ', payload: {} })
+    await host.waitFor((s) => s.phase === 'BUZZ_LOCKED')
+    host.send(`/app/room/${roomId}/action`, { playerId: hostId, type: 'JUDGE', payload: { correct: true } })
+  }
+
+  const revealed = await display.waitFor((s) => s.phase === 'ANSWER_REVEALED')
+  assert(revealed.activeClue?.responseVisible, 'Answer should be visible after correct')
+  host.send(`/app/room/${roomId}/action`, { playerId: hostId, type: 'RETURN_BOARD', payload: {} })
+  return host.waitFor((s) => s.phase === 'BOARD' || s.phase === 'FINISHED')
+}
+
+async function openRealtimeTable(title) {
+  const { roomId, code, hostId } = await createRoom(title)
+  const p1 = await join(code, 'Alex', 'Blue Owls')
+  const p2 = await join(code, 'Sam', 'Red Foxes')
+  const host = await connectStomp(WS, `/topic/room.${roomId}.host`)
+  const display = await connectStomp(WS, `/topic/room.${roomId}`)
+  const p1Sock = await connectStomp(WS, `/topic/room.${roomId}`)
+  const p2Sock = await connectStomp(WS, `/topic/room.${roomId}`)
+  return {
+    roomId,
+    code,
+    hostId,
+    host,
+    display,
+    players: [
+      { ...p1, stomp: p1Sock },
+      { ...p2, stomp: p2Sock }
+    ],
+    close() {
+      host.disconnect()
+      display.disconnect()
+      p1Sock.disconnect()
+      p2Sock.disconnect()
+    }
+  }
+}
+
 async function playThroughClue(roomId, hostId, players, { incorrectFirst = true } = {}) {
   let snap = await must(`/api/rooms/${roomId}?playerId=${hostId}`)
   const clue = firstOpenClue(snap)
@@ -189,6 +286,41 @@ async function main() {
   const health = await must('/api/health')
   assert(health.status === 'ok', 'Health not ok')
   console.log('health ok; supported:', (health.supported || []).join(', '))
+  console.log(`STOMP ${WS}`)
+
+  await scenario('realtime STOMP table: host + 2 players + display', async () => {
+    const table = await openRealtimeTable('Realtime STOMP')
+    try {
+      const board = await ingest(table.roomId, table.hostId, {
+        useSample: true,
+        sampleType: 'maven',
+        boardTitle: 'Realtime Maven',
+        questionHints: 'Emphasize architecture and QA risk',
+        questionFocuses: ['architecture', 'qa', 'patterns']
+      })
+      assert(board.snapshot.board?.categories?.length, 'Maven board empty')
+
+      table.host.send(`/app/room/${table.roomId}/action`, {
+        playerId: table.hostId,
+        type: 'ADMIT_ALL',
+        payload: {}
+      })
+      await table.host.waitFor((s) => s.players?.filter((p) => !p.host && p.admitted).length >= 2)
+
+      table.host.send(`/app/room/${table.roomId}/action`, {
+        playerId: table.hostId,
+        type: 'START',
+        payload: {}
+      })
+      await table.host.waitFor((s) => s.phase === 'BOARD')
+      await table.display.waitFor((s) => s.phase === 'BOARD')
+      await playThroughClueStomp(table, { incorrectFirst: true })
+      await playThroughClueStomp(table, { incorrectFirst: false })
+      console.log('    four-client STOMP table completed')
+    } finally {
+      table.close()
+    }
+  })
 
   // --- Sample content picks with hints ---
   for (const sampleType of ['maven', 'gradle', 'vue', 'python']) {
