@@ -130,7 +130,9 @@ cd client && npm test
 Realtime multiplayer (REST lobby + native STOMP table: host, two players, shared display):
 
 ```bash
-# with server already running
+# with server already running — full STOMP board to FINISHED + sample/GitHub loops
+node scripts/simulate-multiplayer-game.mjs
+# samples only (skip GitHub/PR ingest):
 SKIP_GITHUB=1 node scripts/simulate-multiplayer-game.mjs
 ```
 
@@ -139,7 +141,7 @@ Cloud Agent / local stack:
 ```bash
 ./scripts/cloud-agent-install.sh
 ./scripts/cloud-agent-start.sh
-SKIP_GITHUB=1 node scripts/simulate-multiplayer-game.mjs
+node scripts/simulate-multiplayer-game.mjs
 ```
 
 ## Docs
