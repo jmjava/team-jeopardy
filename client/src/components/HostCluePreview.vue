@@ -25,7 +25,7 @@ defineEmits(['open', 'reveal', 'back'])
         <p class="label">Correct response</p>
         <h3>{{ clue.response }}</h3>
         <p class="muted">{{ clue.explanation }}</p>
-        <p class="note">Players only see category and value until you open buzzers.</p>
+        <p class="note">Players only see category and value until you open buzzers. They must answer in the form of a question.</p>
       </aside>
     </div>
 
