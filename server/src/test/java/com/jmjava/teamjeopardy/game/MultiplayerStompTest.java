@@ -12,14 +12,18 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.messaging.converter.MappingJackson2MessageConverter;
+import org.springframework.messaging.simp.stomp.StompCommand;
 import org.springframework.messaging.simp.stomp.StompFrameHandler;
 import org.springframework.messaging.simp.stomp.StompHeaders;
 import org.springframework.messaging.simp.stomp.StompSession;
 import org.springframework.messaging.simp.stomp.StompSessionHandlerAdapter;
-import org.springframework.web.socket.client.standard.StandardWebSocketClient;
 import org.springframework.web.socket.messaging.WebSocketStompClient;
+import org.springframework.web.socket.sockjs.client.RestTemplateXhrTransport;
+import org.springframework.web.socket.sockjs.client.SockJsClient;
+import org.springframework.web.socket.sockjs.client.Transport;
 
 import java.lang.reflect.Type;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -35,7 +39,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = "team-jeopardy.persistence.path=${java.io.tmpdir}/team-jeopardy-stomp-it.db"
 )
-class MultiplayerStompIT {
+class MultiplayerStompTest {
 
     @LocalServerPort
     int port;
@@ -58,6 +62,12 @@ class MultiplayerStompIT {
         String p1Id = p1.path("playerId").asText();
         String p2Id = p2.path("playerId").asText();
 
+        SnapshotInbox hostInbox = connect("/topic/room." + roomId + ".host");
+        SnapshotInbox playerInbox = connect("/topic/room." + roomId);
+        SnapshotInbox p2Inbox = connect("/topic/room." + roomId);
+        SnapshotInbox displayInbox = connect("/topic/room." + roomId);
+        Thread.sleep(250);
+
         post("/api/rooms/ingest", Map.of(
                 "roomId", roomId,
                 "playerId", hostId,
@@ -65,23 +75,17 @@ class MultiplayerStompIT {
                 "sampleType", "maven",
                 "boardTitle", "STOMP Maven"
         ));
-        post("/api/rooms/" + roomId + "/actions", Map.of("playerId", hostId, "type", "ADMIT_ALL"));
+        await(hostInbox, s -> s.board() != null && s.board().categories() != null && !s.board().categories().isEmpty());
 
-        SnapshotInbox hostInbox = connect("/topic/room." + roomId + ".host");
-        SnapshotInbox playerInbox = connect("/topic/room." + roomId);
-        SnapshotInbox p2Inbox = connect("/topic/room." + roomId);
-        SnapshotInbox displayInbox = connect("/topic/room." + roomId);
+        send(hostInbox.session, roomId, new GameAction("ADMIT_ALL", hostId, null, Map.of()));
+        await(hostInbox, s -> s.players().stream().filter(p -> !p.host() && p.admitted()).count() >= 2);
 
-        hostInbox.session.send("/app/room/" + roomId + "/action", Map.of(
-                "type", "START", "playerId", hostId, "payload", Map.of()
-        ));
+        send(hostInbox.session, roomId, new GameAction("START", hostId, null, Map.of()));
         GameSnapshot board = await(hostInbox, s -> s.phase() == GamePhase.BOARD);
         String clueId = firstOpenClueId(board);
         assertNotNull(clueId);
 
-        hostInbox.session.send("/app/room/" + roomId + "/action", Map.of(
-                "type", "SELECT_CLUE", "playerId", hostId, "payload", Map.of("clueId", clueId)
-        ));
+        send(hostInbox.session, roomId, new GameAction("SELECT_CLUE", hostId, null, Map.of("clueId", clueId)));
         GameSnapshot hostPreview = await(hostInbox, s -> s.phase() == GamePhase.HOST_PREVIEW);
         GameSnapshot playerPreview = await(playerInbox, s -> s.phase() == GamePhase.HOST_PREVIEW);
         GameSnapshot displayPreview = await(displayInbox, s -> s.phase() == GamePhase.HOST_PREVIEW);
@@ -90,17 +94,11 @@ class MultiplayerStompIT {
         assertNull(playerPreview.activeClue().prompt());
         assertNull(displayPreview.activeClue().response());
 
-        hostInbox.session.send("/app/room/" + roomId + "/action", Map.of(
-                "type", "OPEN_BUZZERS", "playerId", hostId, "payload", Map.of()
-        ));
+        send(hostInbox.session, roomId, new GameAction("OPEN_BUZZERS", hostId, null, Map.of()));
         await(playerInbox, s -> s.phase() == GamePhase.CLUE_OPEN);
 
-        playerInbox.session.send("/app/room/" + roomId + "/action", Map.of(
-                "type", "BUZZ", "playerId", p1Id, "payload", Map.of()
-        ));
-        p2Inbox.session.send("/app/room/" + roomId + "/action", Map.of(
-                "type", "BUZZ", "playerId", p2Id, "payload", Map.of()
-        ));
+        send(playerInbox.session, roomId, new GameAction("BUZZ", p1Id, null, Map.of()));
+        send(p2Inbox.session, roomId, new GameAction("BUZZ", p2Id, null, Map.of()));
 
         GameSnapshot locked = await(hostInbox, s -> s.phase() == GamePhase.BUZZ_LOCKED);
         GameSnapshot publicLocked = await(playerInbox, s -> s.phase() == GamePhase.BUZZ_LOCKED);
@@ -108,9 +106,7 @@ class MultiplayerStompIT {
         assertTrue(locked.activeClue().buzzedPlayerId().equals(p1Id)
                 || locked.activeClue().buzzedPlayerId().equals(p2Id));
 
-        hostInbox.session.send("/app/room/" + roomId + "/action", Map.of(
-                "type", "JUDGE", "playerId", hostId, "payload", Map.of("correct", true)
-        ));
+        send(hostInbox.session, roomId, new GameAction("JUDGE", hostId, null, Map.of("correct", true)));
         GameSnapshot revealed = await(displayInbox, s -> s.phase() == GamePhase.ANSWER_REVEALED);
         assertTrue(revealed.activeClue().responseVisible());
         assertEquals(1, revealed.teams().stream().filter(t -> t.score() != 0).count());
@@ -129,21 +125,33 @@ class MultiplayerStompIT {
                 new HttpEntity<>(objectMapper.writeValueAsString(body), headers),
                 String.class
         );
-        assertTrue(response.getStatusCode().is2xxSuccessful(), path + " -> " + response.getStatusCode());
+        assertTrue(response.getStatusCode().is2xxSuccessful(), path + " -> " + response.getStatusCode() + " " + response.getBody());
         return objectMapper.readTree(response.getBody());
     }
 
     private SnapshotInbox connect(String destination) throws Exception {
-        WebSocketStompClient client = new WebSocketStompClient(new StandardWebSocketClient());
-        MappingJackson2MessageConverter converter = new MappingJackson2MessageConverter();
-        converter.setObjectMapper(objectMapper);
-        client.setMessageConverter(converter);
+        List<Transport> transports = List.of(new RestTemplateXhrTransport());
+        WebSocketStompClient client = new WebSocketStompClient(new SockJsClient(transports));
+        MappingJackson2MessageConverter json = new MappingJackson2MessageConverter();
+        json.setObjectMapper(objectMapper);
+        client.setMessageConverter(json);
+
+        BlockingQueue<GameSnapshot> queue = new LinkedBlockingQueue<>();
+        BlockingQueue<Throwable> errors = new LinkedBlockingQueue<>();
         StompSession session = client.connectAsync(
-                "ws://127.0.0.1:" + port + "/stomp",
+                "http://127.0.0.1:" + port + "/ws",
                 new StompSessionHandlerAdapter() {
+                    @Override
+                    public void handleException(StompSession sess, StompCommand command, StompHeaders headers, byte[] payload, Throwable exception) {
+                        errors.offer(exception);
+                    }
+
+                    @Override
+                    public void handleTransportError(StompSession sess, Throwable exception) {
+                        errors.offer(exception);
+                    }
                 }
         ).get(8, TimeUnit.SECONDS);
-        BlockingQueue<GameSnapshot> queue = new LinkedBlockingQueue<>();
         session.subscribe(destination, new StompFrameHandler() {
             @Override
             public Type getPayloadType(StompHeaders headers) {
@@ -155,15 +163,33 @@ class MultiplayerStompIT {
                 queue.offer((GameSnapshot) payload);
             }
         });
-        return new SnapshotInbox(client, session, queue);
+        return new SnapshotInbox(client, session, queue, errors);
+    }
+
+    private static void send(StompSession session, String roomId, GameAction action) {
+        StompHeaders headers = new StompHeaders();
+        headers.setDestination("/app/room/" + roomId + "/action");
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        session.send(headers, action);
     }
 
     private static GameSnapshot await(SnapshotInbox inbox, Predicate<GameSnapshot> match) throws Exception {
-        GameSnapshot snapshot = inbox.queue.poll(12, TimeUnit.SECONDS);
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(15);
+        GameSnapshot snapshot = inbox.queue.poll(15, TimeUnit.SECONDS);
         while (snapshot != null && !match.test(snapshot)) {
-            snapshot = inbox.queue.poll(12, TimeUnit.SECONDS);
+            long remaining = deadline - System.nanoTime();
+            if (remaining <= 0) {
+                snapshot = null;
+                break;
+            }
+            snapshot = inbox.queue.poll(remaining, TimeUnit.NANOSECONDS);
         }
-        assertNotNull(snapshot, "timed out waiting for STOMP snapshot");
+        Throwable conversionError = inbox.errors.peek();
+        assertNotNull(
+                snapshot,
+                "timed out waiting for STOMP snapshot"
+                        + (conversionError == null ? "" : "; conversion error: " + conversionError)
+        );
         return snapshot;
     }
 
@@ -179,7 +205,12 @@ class MultiplayerStompIT {
                 .orElse(null);
     }
 
-    private record SnapshotInbox(WebSocketStompClient client, StompSession session, BlockingQueue<GameSnapshot> queue) {
+    private record SnapshotInbox(
+            WebSocketStompClient client,
+            StompSession session,
+            BlockingQueue<GameSnapshot> queue,
+            BlockingQueue<Throwable> errors
+    ) {
         void disconnect() {
             if (session.isConnected()) {
                 session.disconnect();
