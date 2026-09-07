@@ -14,6 +14,7 @@
  *   API_BASE (default http://localhost:8080)
  *   WS_URL (default ws://localhost:8080/stomp)
  *   SKIP_GITHUB=1 to skip GitHub/PR scenarios (samples only)
+ *   FULL_GAME=0 to play only two clues on the STOMP table (default: entire board to FINISHED)
  *
  * Prefer a branch that contains source (e.g. the feature branch), not an empty main.
  */
@@ -30,9 +31,10 @@ function deriveWsUrl(apiBase) {
 const API = process.env.API_BASE || 'http://localhost:8080'
 const WS = process.env.WS_URL || deriveWsUrl(API)
 const repo = process.argv[2] || 'jmjava/team-jeopardy'
-const ref = process.argv[3] || process.env.SIM_REF || 'cursor/team-jeopardy-realtime-dc86'
+const ref = process.argv[3] || process.env.SIM_REF || 'main'
 const folder = process.argv[4] || 'client/src'
 const skipGithub = process.env.SKIP_GITHUB === '1'
+const fullGame = process.env.FULL_GAME !== '0'
 
 let passed = 0
 let failed = 0
@@ -128,14 +130,29 @@ async function ingest(roomId, hostId, body) {
   })
 }
 
-function firstOpenClue(snap) {
+function unansweredClues(snap) {
+  const open = []
   for (const cat of snap.board?.categories || []) {
     for (const clue of cat.clues || []) {
       const cell = (snap.cells || []).find((c) => c.clueId === clue.id)
-      if (!cell?.answered) return clue
+      if (!cell?.answered) open.push(clue)
     }
   }
-  return null
+  return open
+}
+
+function firstOpenClue(snap) {
+  return unansweredClues(snap)[0] || null
+}
+
+function scoreboard(snap) {
+  return (snap.teams || []).map((t) => `${t.name}=${t.score}`).join(', ') || '(no teams)'
+}
+
+function boardStats(snap) {
+  const total = (snap.cells || []).length
+  const answered = (snap.cells || []).filter((c) => c.answered).length
+  return { total, answered, remaining: total - answered }
 }
 
 async function playThroughClueStomp(table, { incorrectFirst = true } = {}) {
@@ -194,6 +211,28 @@ async function playThroughClueStomp(table, { incorrectFirst = true } = {}) {
   assert(revealed.activeClue?.responseVisible, 'Answer should be visible after correct')
   host.send(`/app/room/${roomId}/action`, { playerId: hostId, type: 'RETURN_BOARD', payload: {} })
   return host.waitFor((s) => s.phase === 'BOARD' || s.phase === 'FINISHED')
+}
+
+async function playFullBoardStomp(table) {
+  const start = boardStats(table.host.latest)
+  assert(start.total > 0, 'Board has no cells')
+  console.log(`    full board: ${start.total} clues across ${(table.host.latest.board?.categories || []).length} categories`)
+  let round = 0
+  let phase = table.host.latest
+  while (unansweredClues(phase).length > 0) {
+    round += 1
+    phase = await playThroughClueStomp(table, { incorrectFirst: round % 2 === 1 })
+    const stats = boardStats(phase)
+    console.log(
+      `    clue ${round}/${start.total} remaining=${stats.remaining} ${scoreboard(phase)} phase=${phase.phase}`
+    )
+    if (phase.phase === 'FINISHED') break
+  }
+  assert(phase.phase === 'FINISHED', `Expected FINISHED after ${round} clues, got ${phase.phase}`)
+  assert(boardStats(phase).remaining === 0, 'Board should be fully answered')
+  await table.display.waitFor((s) => s.phase === 'FINISHED' && s.revision >= phase.revision)
+  console.log(`    FULL GAME finished after ${round} clues; ${scoreboard(phase)}`)
+  return phase
 }
 
 async function openRealtimeTable(title) {
@@ -275,13 +314,16 @@ async function playThroughClue(roomId, hostId, players, { incorrectFirst = true 
   assert(snap.activeClue?.responseVisible, 'Answer should be visible after correct')
 
   snap = await action(roomId, hostId, 'RETURN_BOARD')
-  assert(snap.phase === 'BOARD', `Expected BOARD, got ${snap.phase}`)
+  assert(
+    snap.phase === 'BOARD' || snap.phase === 'FINISHED',
+    `Expected BOARD or FINISHED, got ${snap.phase}`
+  )
   return snap
 }
 
 async function main() {
   console.log(`API ${API}`)
-  console.log(`Repo ${repo}@${ref} folder=${folder} skipGithub=${skipGithub}`)
+  console.log(`Repo ${repo}@${ref} folder=${folder} skipGithub=${skipGithub} fullGame=${fullGame}`)
 
   const health = await must('/api/health')
   assert(health.status === 'ok', 'Health not ok')
@@ -314,9 +356,13 @@ async function main() {
       })
       await table.host.waitFor((s) => s.phase === 'BOARD')
       await table.display.waitFor((s) => s.phase === 'BOARD')
-      await playThroughClueStomp(table, { incorrectFirst: true })
-      await playThroughClueStomp(table, { incorrectFirst: false })
-      console.log('    four-client STOMP table completed')
+      if (fullGame) {
+        await playFullBoardStomp(table)
+      } else {
+        await playThroughClueStomp(table, { incorrectFirst: true })
+        await playThroughClueStomp(table, { incorrectFirst: false })
+        console.log('    four-client STOMP table completed (two clues)')
+      }
     } finally {
       table.close()
     }
