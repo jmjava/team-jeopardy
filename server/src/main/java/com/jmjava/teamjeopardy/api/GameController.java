@@ -9,7 +9,6 @@ import com.jmjava.teamjeopardy.quiz.Board;
 import com.jmjava.teamjeopardy.quiz.QuestionHints;
 import jakarta.validation.Valid;
 import org.springframework.http.MediaType;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -31,18 +30,18 @@ public class GameController {
     private final GameRoomService gameRoomService;
     private final BoardFactory boardFactory;
     private final QuestionBankService questionBankService;
-    private final SimpMessagingTemplate messagingTemplate;
+    private final GameBroadcaster broadcaster;
 
     public GameController(
             GameRoomService gameRoomService,
             BoardFactory boardFactory,
             QuestionBankService questionBankService,
-            SimpMessagingTemplate messagingTemplate
+            GameBroadcaster broadcaster
     ) {
         this.gameRoomService = gameRoomService;
         this.boardFactory = boardFactory;
         this.questionBankService = questionBankService;
-        this.messagingTemplate = messagingTemplate;
+        this.broadcaster = broadcaster;
     }
 
     @PostMapping("/rooms")
@@ -57,7 +56,7 @@ public class GameController {
     @PostMapping("/rooms/join")
     public Dto.JoinRoomResponse join(@Valid @RequestBody Dto.JoinRoomRequest request) {
         var joined = gameRoomService.joinRoom(request.code(), request.displayName(), request.teamName());
-        broadcast(joined.snapshot().roomId());
+        broadcaster.broadcast(joined.snapshot().roomId());
         return new Dto.JoinRoomResponse(joined.snapshot(), joined.playerId());
     }
 
@@ -89,7 +88,7 @@ public class GameController {
                 board,
                 hints.combined()
         );
-        broadcast(request.roomId());
+        broadcaster.broadcast(request.roomId());
         return new Dto.IngestResponse(snapshot, board, summary);
     }
 
@@ -164,7 +163,7 @@ public class GameController {
                 roomId,
                 new GameAction(request.type(), request.playerId(), null, request.payload())
         );
-        broadcast(roomId);
+        broadcaster.broadcast(roomId);
         return snapshot;
     }
 
@@ -219,14 +218,6 @@ public class GameController {
                     summary.put("fingerprint", saved.fingerprint());
                     summary.put("persisted", true);
                 });
-    }
-
-    private void broadcast(String roomId) {
-        GameSnapshot pub = gameRoomService.publicSnapshot(roomId);
-        GameSnapshot host = gameRoomService.hostSnapshot(roomId);
-        messagingTemplate.convertAndSend("/topic/room." + pub.roomId(), pub);
-        messagingTemplate.convertAndSend("/topic/room-code." + pub.code(), pub);
-        messagingTemplate.convertAndSend("/topic/room." + host.roomId() + ".host", host);
     }
 
     private static String blankTo(String value, String fallback) {

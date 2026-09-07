@@ -17,7 +17,6 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -44,18 +43,18 @@ public class QuestionBankController {
 
     private final QuestionBankService questionBankService;
     private final GameRoomService gameRoomService;
-    private final SimpMessagingTemplate messagingTemplate;
+    private final GameBroadcaster broadcaster;
     private final ObjectMapper objectMapper;
 
     public QuestionBankController(
             QuestionBankService questionBankService,
             GameRoomService gameRoomService,
-            SimpMessagingTemplate messagingTemplate,
+            GameBroadcaster broadcaster,
             ObjectMapper objectMapper
     ) {
         this.questionBankService = questionBankService;
         this.gameRoomService = gameRoomService;
-        this.messagingTemplate = messagingTemplate;
+        this.broadcaster = broadcaster;
         this.objectMapper = objectMapper;
     }
 
@@ -242,7 +241,7 @@ public class QuestionBankController {
                 board,
                 meta.questionHints()
         );
-        broadcast(request.roomId());
+        broadcaster.broadcast(request.roomId());
 
         Map<String, Object> summary = new LinkedHashMap<>();
         summary.put("source", "question-bank");
@@ -254,14 +253,6 @@ public class QuestionBankController {
         summary.put("clues", meta.clueCount());
         summary.put("questionHints", meta.questionHints());
         return new Dto.IngestResponse(snapshot, board, summary);
-    }
-
-    private void broadcast(String roomId) {
-        GameSnapshot pub = gameRoomService.publicSnapshot(roomId);
-        GameSnapshot host = gameRoomService.hostSnapshot(roomId);
-        messagingTemplate.convertAndSend("/topic/room." + pub.roomId(), pub);
-        messagingTemplate.convertAndSend("/topic/room-code." + pub.code(), pub);
-        messagingTemplate.convertAndSend("/topic/room." + host.roomId() + ".host", host);
     }
 
     private SavedBoardRecord createFromRequest(Dto.CreateSavedBoardRequest request) {

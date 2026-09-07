@@ -92,6 +92,15 @@ function bindSocket(roomId, isHost) {
     roomId,
     isHost,
     onSnapshot: (next) => {
+      const incoming = next?.revision
+      const current = snapshot.value?.revision
+      if (
+        typeof incoming === 'number' &&
+        typeof current === 'number' &&
+        incoming < current
+      ) {
+        return
+      }
       snapshot.value = next
       const self = (next.players || []).find((p) => p.id === session.playerId)
       session.admitted = !!self?.admitted || session.isHost
