@@ -63,6 +63,57 @@ export OPENAI_API_KEY=sk-...
 
 Without a key, ingest and boards still work end-to-end offline.
 
+## JIRA release boards (SPEC / REL)
+
+Host picks **one release** (`fixVersion`) and **one or more JIRA projects**. The server
+builds a playable 5–6 category board from issue fields (summary, description,
+acceptance/spec, epic, component, type). This path does **not** go through the
+coder/QA code-graph balancer.
+
+| Setting | Env / config | Purpose |
+|---------|--------------|---------|
+| Base URL | `JIRA_BASE_URL` / `team-jeopardy.jira.base-url` | Cloud or Server/DC host. Empty in git. |
+| Email | `JIRA_EMAIL` / `team-jeopardy.jira.email` | Atlassian account email (Cloud) or username |
+| API token | `JIRA_API_TOKEN` / `team-jeopardy.jira.api-token` | Read-only token. **Never commit.** |
+| OpenAI (optional) | `OPENAI_API_KEY` + `team-jeopardy.openai.enabled` | Existing enricher polishes prompts only |
+
+```bash
+export JIRA_BASE_URL=https://your-site.atlassian.net
+export JIRA_EMAIL=you@example.com
+export JIRA_API_TOKEN=...          # not in git
+# optional polish — same enricher as code boards; answers stay fixed
+export OPENAI_API_KEY=sk-...
+# TEAM_JEOPARDY_OPENAI_ENABLED=true
+```
+
+Live import is **read-only JQL search**. The app does not scrape the JIRA UI and
+never writes issues. The JIRA token is never sent to OpenAI (clues already carry
+sanitized summary/AC text only). CI and local play work **without** credentials:
+
+```bash
+curl -s -X POST http://localhost:8080/api/rooms/ingest-jira \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "roomId":"ROOM_ID",
+    "playerId":"HOST_ID",
+    "projects":["PROJ"],
+    "release":"2.4.0",
+    "useFixture": true,
+    "fixture": "one-project",
+    "boardTitle":"Storefront 2.4.0"
+  }'
+```
+
+Sanitized fixtures (host `https://jira.example`, keys like `PROJ-1` / `SHOP-2`):
+
+- `samples/jira-release-one-project.json` — fat single project, split by epic
+- `samples/jira-release-multi-project.json` — similar-size projects, one column each
+
+`GET /api/health` lists `jira` in `supported`. `jira.configured` is true only when
+the three env vars are set; the health payload does not echo the host or token.
+
+`sourceKind` for the question bank is `jira`.
+
 ## Question bank (SQLite)
 
 Guide-generated boards are auto-saved to a local SQLite file so moderators can reuse
@@ -158,7 +209,7 @@ Diagram source files: [`design/figma/`](design/figma/).
 ```text
 client/     Vue 3 + STOMP multiplayer UI
 server/     Spring Boot game + ingest/pattern/question strategies
-samples/    sample-reactor, sample-gradle, sample-vue, sample-python
+samples/    sample-reactor, sample-gradle, sample-vue, sample-python, sanitized JIRA fixtures
 design/     Figma-importable SVG UI diagrams
 docs/       Figma and white-label documentation
 NOTICE      attribution for skgraph-derived Maven/OSGi ports

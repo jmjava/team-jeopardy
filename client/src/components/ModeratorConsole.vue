@@ -17,6 +17,7 @@ const emit = defineEmits([
   'ingest',
   'ingest-github',
   'ingest-pulls',
+  'ingest-jira',
   'admit',
   'admit-all',
   'start',
@@ -42,6 +43,14 @@ const github = reactive({
   foldersText: '',
   includePulls: true,
   wholeRepo: true
+})
+
+const jira = reactive({
+  projects: 'PROJ',
+  release: '2.4.0',
+  jql: '',
+  useFixture: true,
+  fixture: 'one-project'
 })
 
 const hints = reactive({
@@ -104,6 +113,21 @@ function sampleIngest(type) {
 function pullsIngest() {
   emit('ingest-pulls', {
     repo: github.repo,
+    ...hintPayload()
+  })
+}
+
+function jiraIngest() {
+  const projects = jira.projects
+    .split(/[\n,]/)
+    .map((s) => s.trim())
+    .filter(Boolean)
+  emit('ingest-jira', {
+    projects,
+    release: jira.release,
+    jql: jira.jql,
+    useFixture: jira.useFixture,
+    fixture: jira.fixture,
     ...hintPayload()
   })
 }
@@ -215,7 +239,7 @@ function addFolder(path) {
           <div class="step-num">2</div>
           <div class="step-body">
             <h3>Research base</h3>
-            <p class="muted">Samples for a quick board, or ingest from GitHub (whole repo or folders).</p>
+            <p class="muted">Samples for a quick board, GitHub, or a JIRA release (SPEC/REL).</p>
 
             <div class="row">
               <button :disabled="busy" @click="sampleIngest('maven')">Maven</button>
@@ -272,6 +296,44 @@ function addFolder(path) {
                   @click="addFolder(path)"
                 >
                   {{ path }}
+                </button>
+              </div>
+            </div>
+
+            <div class="jira-box">
+              <h4>JIRA release</h4>
+              <p class="muted">
+                Read-only search. Tokens stay in server env — never pasted here.
+                Fixtures use jira.example / PROJ / SHOP.
+              </p>
+              <div class="fields">
+                <label>
+                  Projects (comma list)
+                  <input v-model="jira.projects" placeholder="PROJ, SHOP" />
+                </label>
+                <label>
+                  Release (fixVersion)
+                  <input v-model="jira.release" placeholder="2.4.0" />
+                </label>
+              </div>
+              <label class="block">
+                Extra JQL (optional)
+                <input v-model="jira.jql" placeholder="status = Done" />
+              </label>
+              <label class="check">
+                <input v-model="jira.useFixture" type="checkbox" />
+                Use sanitized fixture (offline, no JIRA token)
+              </label>
+              <label v-if="jira.useFixture" class="block">
+                Fixture
+                <select v-model="jira.fixture">
+                  <option value="one-project">One project (fat release)</option>
+                  <option value="multi">Several projects</option>
+                </select>
+              </label>
+              <div class="row">
+                <button class="ok" :disabled="busy" @click="jiraIngest">
+                  {{ busy ? 'Building…' : 'Build from JIRA release' }}
                 </button>
               </div>
             </div>
@@ -448,7 +510,7 @@ function addFolder(path) {
 }
 .block, label { display: grid; gap: 0.35rem; color: var(--muted); font-size: 0.92rem; }
 .block { margin-top: 0.7rem; }
-textarea, .fields input {
+textarea, .fields input, .jira-box select {
   width: 100%; border-radius: 10px; border: 1px solid rgba(244, 247, 255, 0.18);
   background: rgba(255, 255, 255, 0.06); color: var(--text); padding: 0.75rem 0.9rem;
   font: inherit; resize: vertical;
@@ -460,6 +522,7 @@ textarea, .fields input {
   display: flex; align-items: center; gap: 0.5rem; margin-top: 0.65rem; color: var(--text);
 }
 .github-box,
+.jira-box,
 .saved-box {
   margin-top: 1rem; padding: 0.9rem 1rem; border-radius: 14px;
   background: rgba(0, 0, 0, 0.18); border: 1px solid rgba(244, 247, 255, 0.06);

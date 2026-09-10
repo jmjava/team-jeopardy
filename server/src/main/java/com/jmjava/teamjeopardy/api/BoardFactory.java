@@ -8,18 +8,28 @@ import com.jmjava.teamjeopardy.graph.CodeGraph;
 import com.jmjava.teamjeopardy.graph.CodeGraphIngester;
 import com.jmjava.teamjeopardy.graph.CodeNode;
 import com.jmjava.teamjeopardy.graph.ProjectKind;
+import com.jmjava.teamjeopardy.jira.JiraCategoryBucket;
+import com.jmjava.teamjeopardy.jira.JiraIssueFact;
+import com.jmjava.teamjeopardy.jira.JiraReleaseCategorizer;
+import com.jmjava.teamjeopardy.jira.JiraReleaseClient;
 import com.jmjava.teamjeopardy.quiz.Board;
+import com.jmjava.teamjeopardy.quiz.Category;
 import com.jmjava.teamjeopardy.quiz.QuestionGenerator;
 import com.jmjava.teamjeopardy.quiz.QuestionHints;
+import com.jmjava.teamjeopardy.quiz.strategy.JiraReleaseQuestionStrategy;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
 /**
@@ -32,6 +42,9 @@ public class BoardFactory {
     private final QuestionGenerator questionGenerator;
     private final GitHubPullRequestClient pullRequestClient;
     private final GitHubRepoFetcher repoFetcher;
+    private final JiraReleaseClient jiraReleaseClient;
+    private final JiraReleaseCategorizer jiraReleaseCategorizer;
+    private final JiraReleaseQuestionStrategy jiraReleaseQuestionStrategy;
 
     @Value("${team-jeopardy.sample-code-path}")
     private String sampleMavenPath;
@@ -55,12 +68,18 @@ public class BoardFactory {
             CodeGraphIngester codeGraphIngester,
             QuestionGenerator questionGenerator,
             GitHubPullRequestClient pullRequestClient,
-            GitHubRepoFetcher repoFetcher
+            GitHubRepoFetcher repoFetcher,
+            JiraReleaseClient jiraReleaseClient,
+            JiraReleaseCategorizer jiraReleaseCategorizer,
+            JiraReleaseQuestionStrategy jiraReleaseQuestionStrategy
     ) {
         this.codeGraphIngester = codeGraphIngester;
         this.questionGenerator = questionGenerator;
         this.pullRequestClient = pullRequestClient;
         this.repoFetcher = repoFetcher;
+        this.jiraReleaseClient = jiraReleaseClient;
+        this.jiraReleaseCategorizer = jiraReleaseCategorizer;
+        this.jiraReleaseQuestionStrategy = jiraReleaseQuestionStrategy;
     }
 
     public record BuiltBoard(Board board, Map<String, Object> summary) {
@@ -273,11 +292,116 @@ public class BoardFactory {
         paths.put("python", Path.of(samplePythonPath).toAbsolutePath().normalize().toString());
         paths.put("pulls", "github:" + defaultRepo);
         paths.put("github", "github:" + defaultRepo);
+        paths.put("jira-multi", jiraReleaseClient.fixturePath("multi").toString());
+        paths.put("jira-one-project", jiraReleaseClient.fixturePath("one-project").toString());
         return paths;
     }
 
     public String defaultRepo() {
         return defaultRepo;
+    }
+
+    public JiraReleaseClient jiraReleaseClient() {
+        return jiraReleaseClient;
+    }
+
+    /**
+     * Dedicated JIRA path: load issues → categorize → SPEC/REL clues → optional enricher.
+     * Does not run {@link QuestionGenerator#generate} (that would scramble SPEC/REL).
+     */
+    public BuiltBoard fromJiraRelease(
+            List<String> projects,
+            String release,
+            String extraJql,
+            boolean useFixture,
+            String fixtureKind,
+            String boardTitle,
+            QuestionHints hints
+    ) throws IOException {
+        QuestionHints effective = hints == null ? QuestionHints.empty() : hints;
+        String version = release == null ? "" : release.trim();
+        if (version.isBlank() && !useFixture) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "release (fixVersion) is required");
+        }
+
+        List<JiraIssueFact> loaded = useFixture
+                ? jiraReleaseClient.loadNamedFixture(resolveFixtureKind(projects, fixtureKind))
+                : jiraReleaseClient.search(projects, version, extraJql);
+        List<JiraIssueFact> issues = filterProjects(loaded, projects);
+        if (issues.isEmpty()) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "No JIRA issues matched this release/projects"
+            );
+        }
+        if (version.isBlank()) {
+            version = issues.stream()
+                    .map(JiraIssueFact::fixVersion)
+                    .filter(v -> v != null && !v.isBlank())
+                    .findFirst()
+                    .orElse("release");
+        }
+
+        List<JiraCategoryBucket> buckets = jiraReleaseCategorizer.categorize(issues);
+        List<Category> categories = jiraReleaseQuestionStrategy.build(buckets, new AtomicInteger(1));
+
+        CodeGraph graph = new CodeGraph("jira:" + version);
+        graph.setProjectKind(ProjectKind.GENERIC);
+        graph.setProjectName("JIRA " + version);
+        if (!effective.isBlank()) {
+            graph.setQuestionHints(effective.combined());
+        }
+        categories = questionGenerator.polish(graph, categories, effective);
+
+        String title = boardTitle != null && !boardTitle.isBlank()
+                ? boardTitle
+                : "REL Jeopardy: " + version;
+        Board board = new Board(
+                title,
+                useFixture ? jiraReleaseClient.sampleHost() : "jira:" + version,
+                categories,
+                new Board.GraphDigest(issues.size(), 0, 0, 0, 0)
+        );
+
+        Map<String, Object> summary = new LinkedHashMap<>();
+        summary.put("engine", "team-jeopardy-ingest");
+        summary.put("derivedFrom", "JIRA release fields (not a code graph)");
+        summary.put("source", useFixture ? "jira-fixture" : "jira");
+        summary.put("sourceKind", "jira");
+        summary.put("release", version);
+        summary.put("projects", JiraReleaseClient.normalizeProjects(projects));
+        summary.put("issues", issues.size());
+        summary.put("fixture", useFixture);
+        summary.put("jiraConfigured", jiraReleaseClient.isConfigured());
+        summary.put("categories", board.categories().size());
+        summary.put("categoryTitles", board.categories().stream().map(Category::title).toList());
+        summary.put("bucketDimensions", buckets.stream().map(JiraCategoryBucket::dimension).toList());
+        summary.put("questionHints", graph.getQuestionHints());
+        return new BuiltBoard(board, summary);
+    }
+
+    static String resolveFixtureKind(List<String> projects, String fixtureKind) {
+        if (fixtureKind != null && !fixtureKind.isBlank()) {
+            return fixtureKind.trim();
+        }
+        List<String> keys = JiraReleaseClient.normalizeProjects(projects);
+        return keys.size() <= 1 ? "one-project" : "multi";
+    }
+
+    static List<JiraIssueFact> filterProjects(List<JiraIssueFact> issues, List<String> projects) {
+        List<String> keys = JiraReleaseClient.normalizeProjects(projects).stream()
+                .map(k -> k.toUpperCase(Locale.ROOT))
+                .toList();
+        if (keys.isEmpty() || issues == null) {
+            return issues == null ? List.of() : issues;
+        }
+        List<JiraIssueFact> filtered = new ArrayList<>();
+        for (JiraIssueFact issue : issues) {
+            if (keys.contains(issue.projectKey().toUpperCase(Locale.ROOT))) {
+                filtered.add(issue);
+            }
+        }
+        return filtered.isEmpty() ? issues : filtered;
     }
 
     private Map<String, Object> summary(CodeGraph graph, Board board) {

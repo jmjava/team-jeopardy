@@ -43,6 +43,13 @@ export function ingestBoard(payload) {
   })
 }
 
+export function ingestJiraBoard(payload) {
+  return request('/api/rooms/ingest-jira', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  })
+}
+
 export function loadSavedBoard(payload) {
   return request('/api/rooms/load-board', {
     method: 'POST',

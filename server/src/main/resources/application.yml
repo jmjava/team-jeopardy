@@ -49,6 +49,17 @@ team-jeopardy:
     pr-limit: 8
     timeout-seconds: 45
     workspace: ${java.io.tmpdir}/team-jeopardy-github
+  jira:
+    # Read-only search. Never commit real hosts or tokens. Public samples use jira.example.
+    base-url: ${JIRA_BASE_URL:}
+    email: ${JIRA_EMAIL:}
+    api-token: ${JIRA_API_TOKEN:}
+    timeout-seconds: 30
+    max-issues: 200
+    fixture-multi-path: ../samples/jira-release-multi-project.json
+    fixture-one-project-path: ../samples/jira-release-one-project.json
+    acceptance-field: ${JIRA_ACCEPTANCE_FIELD:}
+    epic-name-field: ${JIRA_EPIC_NAME_FIELD:}
 
 logging:
   level:

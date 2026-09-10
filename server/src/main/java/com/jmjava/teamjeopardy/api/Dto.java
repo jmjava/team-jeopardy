@@ -75,6 +75,21 @@ public final class Dto {
     public record IngestResponse(GameSnapshot snapshot, Board board, Map<String, Object> ingestSummary) {
     }
 
+    public record JiraIngestRequest(
+            @NotBlank String roomId,
+            @NotBlank String playerId,
+            List<String> projects,
+            String release,
+            String jql,
+            Boolean useFixture,
+            /** multi | one-project — used when {@code useFixture} is true. */
+            String fixture,
+            String boardTitle,
+            String questionHints,
+            List<String> questionFocuses
+    ) {
+    }
+
     public record LoadBoardRequest(
             @NotBlank String roomId,
             @NotBlank String playerId,
