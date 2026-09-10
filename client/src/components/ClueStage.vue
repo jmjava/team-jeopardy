@@ -31,7 +31,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 </script>
 
 <template>
-  <section class="stage" :class="[mode, phase]" v-if="clue">
+  <section class="stage" :class="[mode, phase, { thinking: isOpen }]" v-if="clue">
     <header class="banner">
       <span class="cat">{{ clue.categoryTitle }}</span>
       <strong class="value">${{ clue.value }}</strong>
@@ -46,6 +46,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
     </div>
 
     <article v-else-if="!isPreview || isHost" class="prompt">
+      <p v-if="isOpen" class="kicker form-hint">Answer in the form of a question</p>
       <pre v-if="clue.prompt">{{ clue.prompt }}</pre>
       <p v-else class="muted">Waiting for clue…</p>
       <p v-if="clue.sourcePath && isHost" class="muted source">{{ clue.sourcePath }}</p>
@@ -110,11 +111,14 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
   animation: rise 280ms ease both;
 }
 
-.stage.display {
-  min-height: 58vh;
-  align-content: center;
-  text-align: center;
-  padding: 2rem 1.75rem;
+.stage.thinking {
+  box-shadow: 0 0 0 1px rgba(240, 208, 96, 0.28), var(--shadow);
+  animation: think-glow 1.4s ease-in-out infinite;
+}
+
+.form-hint {
+  color: var(--gold);
+  margin-bottom: 0.55rem;
 }
 
 .banner {
@@ -288,6 +292,16 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+@keyframes think-glow {
+  0%,
+  100% {
+    box-shadow: 0 0 0 1px rgba(240, 208, 96, 0.2), var(--shadow);
+  }
+  50% {
+    box-shadow: 0 0 24px 2px rgba(240, 208, 96, 0.35), var(--shadow);
   }
 }
 </style>

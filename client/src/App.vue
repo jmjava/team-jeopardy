@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import {
   browseGithub,
   createRoom,
@@ -11,6 +11,7 @@ import {
   postAction
 } from './api'
 import { connectGameSocket } from './useGameSocket'
+import { getGameSfx, sfxEventForTransition } from './useGameSfx'
 import LobbyView from './components/LobbyView.vue'
 import ModeratorConsole from './components/ModeratorConsole.vue'
 import QuestionBankAdmin from './components/QuestionBankAdmin.vue'
@@ -45,6 +46,9 @@ const ingestSummary = ref(null)
 const health = ref(null)
 const defaultRepo = ref('jmjava/team-jeopardy')
 let socket = null
+const sfx = getGameSfx()
+let prevSfxPhase = ''
+let detachSfxUnlock
 
 const phase = computed(() => snapshot.value?.phase || 'LOBBY')
 const me = computed(() =>
@@ -365,7 +369,26 @@ watch(
   }
 )
 
-onBeforeUnmount(() => socket?.disconnect())
+watch(
+  () => [phase.value, snapshot.value?.revision, snapshot.value?.activeClue?.dailyDouble],
+  () => {
+    const next = phase.value
+    const event = sfxEventForTransition(prevSfxPhase, next, {
+      dailyDouble: !!snapshot.value?.activeClue?.dailyDouble
+    })
+    if (event) sfx.play(event)
+    prevSfxPhase = next
+  }
+)
+
+onMounted(() => {
+  detachSfxUnlock = sfx.attachUnlock()
+})
+
+onBeforeUnmount(() => {
+  socket?.disconnect()
+  detachSfxUnlock?.()
+})
 </script>
 
 <template>
