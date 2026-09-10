@@ -5,6 +5,7 @@ import {
   createRoom,
   getHealth,
   ingestBoard,
+  ingestJiraBoard,
   joinRoom,
   loadSavedBoard,
   postAction
@@ -254,6 +255,31 @@ async function onIngestPulls(payload) {
   }
 }
 
+async function onIngestJira(payload) {
+  error.value = ''
+  busy.value = true
+  try {
+    const result = await ingestJiraBoard({
+      roomId: session.roomId,
+      playerId: session.playerId,
+      projects: payload.projects || [],
+      release: payload.release,
+      jql: payload.jql,
+      useFixture: payload.useFixture !== false,
+      fixture: payload.fixture,
+      boardTitle: snapshot.value?.title || `JIRA: ${payload.release || 'release'}`,
+      questionHints: payload.questionHints,
+      questionFocuses: payload.questionFocuses
+    })
+    snapshot.value = result.snapshot
+    ingestSummary.value = result.ingestSummary
+  } catch (err) {
+    error.value = err.message
+  } finally {
+    busy.value = false
+  }
+}
+
 async function onBrowseGithub(payload) {
   try {
     const result = await browseGithub({
@@ -406,6 +432,7 @@ onBeforeUnmount(() => socket?.disconnect())
         @ingest="onIngest"
         @ingest-github="onIngestGithub"
         @ingest-pulls="onIngestPulls"
+        @ingest-jira="onIngestJira"
         @browse-github="onBrowseGithub"
         @load-saved="onLoadSavedBoard"
         @open-admin="openQuestionBankAdmin"

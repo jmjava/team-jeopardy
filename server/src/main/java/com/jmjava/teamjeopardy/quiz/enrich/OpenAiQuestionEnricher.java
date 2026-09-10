@@ -162,6 +162,8 @@ public class OpenAiQuestionEnricher implements QuestionEnricher {
                 - Prefer concrete code/architecture wording over trivia counts.
                 - For QA-oriented categories, emphasize contracts, regressions, risk, and test targets.
                 - For coder categories, emphasize APIs, patterns, call structure, and ownership.
+                - For SPEC/REL categories, rewrite ticket paste into Jeopardy product-knowledge wording.
+                  You may polish a category title's tone but must not invent issues or change answers.
                 - Stay grounded in the provided evidence; invent nothing.
                 - When moderator hints are provided, bias wording and emphasis toward those themes
                   without changing the fixed answer or inventing facts.

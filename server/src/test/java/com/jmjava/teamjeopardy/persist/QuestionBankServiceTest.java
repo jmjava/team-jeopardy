@@ -67,6 +67,15 @@ class QuestionBankServiceTest {
     }
 
     @Test
+    void jiraSourceKeyIsStableAndContainsNoHost() {
+        assertEquals(
+                "jira:PROJ,SHOP@2.4.0",
+                QuestionBankService.sourceKeyForJira(List.of("shop", "PROJ"), "2.4.0")
+        );
+        assertFalse(QuestionBankService.sourceKeyForJira(List.of("PROJ"), "2.4.0").contains("http"));
+    }
+
+    @Test
     void fingerprintStableForSameSourceAndHints() {
         QuestionHints hints = QuestionHints.of("QA blast radius", List.of("qa"));
         String a = QuestionBankService.fingerprint("sample", "sample:vue", hints);
