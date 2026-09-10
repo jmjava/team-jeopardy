@@ -114,6 +114,16 @@ the three env vars are set; the health payload does not echo the host or token.
 
 `sourceKind` for the question bank is `jira`.
 
+## Leftover: typed Final + Daily Double wager (T16)
+
+Daily Double on `main` is a **badge** (`clue.dailyDouble`) on a normal buzz
+clue. A `FINAL` game phase exists in the enum but is unused. Players do not
+type a wager, and there is no write-in Final Jeopardy yet.
+
+That leftover is T16: typed Daily Double wager before the clue is shown, and
+typed Final (category → locked wagers → clue → typed answers → host marks).
+OpenAI is not required. This section is not shipped gameplay.
+
 ## Question bank (SQLite)
 
 Guide-generated boards are auto-saved to a local SQLite file so moderators can reuse
