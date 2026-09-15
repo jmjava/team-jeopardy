@@ -151,3 +151,14 @@ test('refresh restores the moderator seat and share controls', async ({ page }) 
   })
   await expect(page.locator('.room-chip strong')).toHaveText(roomCode)
 })
+
+test('copy code shows a status banner', async ({ page, context }) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write'])
+  await page.goto('/')
+  await page.getByRole('button', { name: /Create room/i }).click()
+  await expect(page.getByRole('heading', { name: 'Game control' })).toBeVisible({
+    timeout: 20_000
+  })
+  await page.getByRole('button', { name: /Copy code/i }).first().click()
+  await expect(page.getByText(/Room code copied/i)).toBeVisible()
+})

@@ -364,7 +364,7 @@ async function flashCopied(label) {
   window.clearTimeout(copiedTimer)
   copiedTimer = window.setTimeout(() => {
     copied.value = ''
-  }, 1600)
+  }, 3200)
 }
 
 async function copyValue(text, label) {
@@ -372,7 +372,6 @@ async function copyValue(text, label) {
   flashCopied(label)
   const ok = await copyText(text)
   if (!ok) {
-    copied.value = ''
     error.value = 'Could not copy to clipboard — select the room code and copy it manually'
   }
 }

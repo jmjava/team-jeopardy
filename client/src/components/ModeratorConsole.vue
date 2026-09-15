@@ -66,6 +66,16 @@ const folderChoices = ref([])
 const browseBusy = ref(false)
 const savedBoards = ref([])
 const savedBusy = ref(false)
+const copiedLocal = ref('')
+let copiedLocalTimer = 0
+
+function markCopied(kind) {
+  copiedLocal.value = kind
+  window.clearTimeout(copiedLocalTimer)
+  copiedLocalTimer = window.setTimeout(() => {
+    copiedLocal.value = ''
+  }, 2500)
+}
 
 async function refreshSavedBoards() {
   savedBusy.value = true
@@ -249,8 +259,12 @@ function addFolder(path) {
         <span class="muted">Room code</span>
         <strong>{{ snapshot?.code }}</strong>
         <div class="row tight">
-          <button type="button" class="secondary slim" @click="emit('copy-code')">Copy code</button>
-          <button type="button" class="secondary slim" @click="emit('copy-join')">Player link</button>
+          <button type="button" class="secondary slim" @click="markCopied('code'); emit('copy-code')">
+            {{ copiedLocal === 'code' ? 'Copied' : 'Copy code' }}
+          </button>
+          <button type="button" class="secondary slim" @click="markCopied('join'); emit('copy-join')">
+            {{ copiedLocal === 'join' ? 'Copied' : 'Player link' }}
+          </button>
         </div>
       </div>
     </header>
