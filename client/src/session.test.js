@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { SESSION_KEY, clearSession, loadSession, playerJoinUrl, saveSession } from './session'
+import { SESSION_KEY, clearSession, copyText, loadSession, playerJoinUrl, saveSession } from './session'
 
 function memory() {
   const data = new Map()
@@ -55,5 +55,14 @@ describe('session', () => {
     expect(href).toContain('code=AB12CD')
     expect(href).not.toContain('view=')
     expect(href).not.toContain('room=')
+  })
+
+  it('does not hang if clipboard.writeText never resolves', async () => {
+    const started = Date.now()
+    const result = await copyText('NXRU4Z', {
+      clipboard: { writeText: () => new Promise(() => {}) }
+    })
+    expect(Date.now() - started).toBeLessThan(1500)
+    expect(result).toBe(false)
   })
 })
