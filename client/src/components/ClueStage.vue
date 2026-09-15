@@ -20,6 +20,8 @@ const isLocked = computed(() => props.phase === 'BUZZ_LOCKED')
 const isRevealed = computed(() => props.phase === 'ANSWER_REVEALED')
 
 function onKey(e) {
+  if (e.repeat) return
+  if (e.target?.closest?.('input, textarea, select, button')) return
   if (e.code === 'Space' && props.canBuzz && isOpen.value) {
     e.preventDefault()
     emit('buzz')
@@ -54,6 +56,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
     <div
       v-if="isLocked || clue.buzzedPlayerName"
       class="buzz-banner"
+      role="status"
+      aria-live="assertive"
       :style="{ '--team': clue.buzzedTeamColor || 'var(--gold)' }"
     >
       <p class="kicker">First buzz</p>
@@ -74,7 +78,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
         @click="emit('buzz')"
       >
         Buzz
-        <span class="hint">Space</span>
+        <span class="hint" aria-hidden="true">Space</span>
       </button>
 
       <p v-if="canBuzz && isLocked" class="locked-msg muted">Buzzers locked</p>
@@ -82,17 +86,28 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
       <template v-if="isHost">
         <button v-if="isPreview" class="ok" @click="emit('open')">
           Show clue &amp; open buzzers
+          <span class="hint" aria-hidden="true">Enter</span>
         </button>
-        <button v-if="isLocked" class="ok" @click="emit('judge', true)">Correct</button>
-        <button v-if="isLocked" class="danger" @click="emit('judge', false)">Incorrect</button>
+        <button v-if="isLocked" class="ok" @click="emit('judge', true)">
+          Correct
+          <span class="hint" aria-hidden="true">C</span>
+        </button>
+        <button v-if="isLocked" class="danger" @click="emit('judge', false)">
+          Incorrect
+          <span class="hint" aria-hidden="true">X</span>
+        </button>
         <button
           v-if="!isRevealed"
           class="secondary"
           @click="emit('reveal')"
         >
           Reveal answer
+          <span class="hint" aria-hidden="true">R</span>
         </button>
-        <button v-if="isRevealed" @click="emit('back')">Back to board</button>
+        <button v-if="isRevealed" @click="emit('back')">
+          Back to board
+          <span class="hint" aria-hidden="true">Esc</span>
+        </button>
       </template>
     </div>
   </section>
@@ -213,10 +228,17 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
   border: 1px solid rgba(62, 207, 142, 0.35);
 }
 
+.controls button:not(.buzz) {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+}
+
 .answer h3 {
   margin: 0.25rem 0 0.4rem;
   font-size: clamp(1.4rem, 3vw, 2rem);
-  color: #b9f5d4;
+  color: var(--answer-text);
 }
 
 .controls {
