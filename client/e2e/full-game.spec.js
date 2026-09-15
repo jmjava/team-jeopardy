@@ -126,3 +126,39 @@ test('moderator can switch sample content types after hints', async ({ page }) =
   await expect(page.getByRole('button', { name: /PRs only/i })).toBeVisible()
   await expect(page.getByRole('button', { name: /Browse folders/i })).toBeVisible()
 })
+
+test('join form prefills room code from the URL', async ({ page }) => {
+  await page.goto('/?code=ab12cd')
+  await expect(
+    page.locator('form').filter({ hasText: 'Player' }).locator('input').nth(0)
+  ).toHaveValue('AB12CD')
+})
+
+test('refresh restores the moderator seat and share controls', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: /Create room/i }).click()
+  await expect(page.getByRole('heading', { name: 'Game control' })).toBeVisible({
+    timeout: 20_000
+  })
+  const roomCode = (await page.locator('.room-chip strong').textContent())?.trim()
+  expect(roomCode).toBeTruthy()
+  await expect(page.getByRole('button', { name: /Copy code/i }).first()).toBeVisible()
+  await expect(page.getByRole('button', { name: /Player link/i })).toBeVisible()
+
+  await page.reload()
+  await expect(page.getByRole('heading', { name: 'Game control' })).toBeVisible({
+    timeout: 20_000
+  })
+  await expect(page.locator('.room-chip strong')).toHaveText(roomCode)
+})
+
+test('copy code shows a status banner', async ({ page, context }) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write'])
+  await page.goto('/')
+  await page.getByRole('button', { name: /Create room/i }).click()
+  await expect(page.getByRole('heading', { name: 'Game control' })).toBeVisible({
+    timeout: 20_000
+  })
+  await page.getByRole('button', { name: /Copy code/i }).first().click()
+  await expect(page.getByText(/Room code copied/i)).toBeVisible()
+})

@@ -4,11 +4,12 @@ Planning guide for customizing Team Jeopardy branding. The visual map is in [`de
 
 ## Current state
 
-Branding is hardcoded:
+Build-time white-label (option A) is wired:
 
-- **Name:** “Team Jeopardy” in headers, page title, and default board titles
-- **Logo:** none — text-only `.brand` headings (Bebas Neue)
-- **Colors:** Jeopardy-style navy + gold via CSS variables in `client/src/styles.css`
+- **Name / logo:** `BrandHeader.vue` + `VITE_APP_NAME` / `VITE_LOGO_URL`
+- **Colors:** `client/src/theme.js` writes CSS variables on boot
+- **Favicon:** `client/public/favicon.svg` (replaced when `VITE_LOGO_URL` is set)
+- **Page background:** `--bg` / `--bg-mid` on `body`
 
 Team gameplay colors (score bar chips) are separate — assigned server-side in `GameRoomService.java` and are not part of org branding.
 
@@ -42,7 +43,7 @@ Defined in `client/src/styles.css`:
 | `--ok` / `--danger` | `#3ecf8e` / `#e85d4c` | Judge buttons, sync status, errors |
 | Page background | `#071225` + gradients | `body` in `styles.css` (not yet a variable) |
 
-**Gap:** `BoardView.vue` and `ModeratorConsole.vue` still use hardcoded hex values. Refactor these to CSS variables when implementing white-label.
+**Gap (remaining):** a few component-local colors may still exist; prefer the tokens in `styles.css` (`--lede`, `--answer-text`, `--board-cell`, `--cell-answered`, `--board-border`).
 
 ### Applying a custom theme at runtime
 
@@ -104,14 +105,16 @@ Add a branding section to `QuestionBankAdmin.vue` or a dedicated `?view=settings
 
 ## Implementation checklist
 
-- [ ] Add `client/src/theme.js` and call `applyTheme()` from `main.js`
-- [ ] Add `BrandHeader.vue` (logo + app name) and use in `App.vue`, `SharedDisplay.vue`, optionally `LobbyView.vue`
-- [ ] Externalize app name — replace hardcoded “Team Jeopardy” in `App.vue`, `LobbyView.vue`, `SharedDisplay.vue`, `index.html`
-- [ ] Extend `:root` with `--bg` and use it in `body` gradient
-- [ ] Refactor hardcoded hex in `BoardView.vue` and `ModeratorConsole.vue` to CSS variables
-- [ ] Add logo assets under `client/public/` (or serve from backend)
-- [ ] Set favicon dynamically or at build time
-- [ ] Choose config approach (A, B, or C) and wire up env / API
+- [x] Add `client/src/theme.js` and call `applyTheme()` from `main.js`
+- [x] Add `BrandHeader.vue` (logo + app name) and use in `App.vue` (shared display uses the themed app name)
+- [x] Externalize app name — `VITE_APP_NAME` in `App.vue`, `LobbyView.vue`, `SharedDisplay.vue`, document title
+- [x] Extend `:root` with `--bg` / `--bg-mid` and use them in the `body` gradient
+- [x] Refactor hardcoded hex in `BoardView.vue` (and related screens) to CSS variables
+- [x] Add logo/favicon assets under `client/public/`
+- [x] Set favicon at build time (`/favicon.svg`, swapped when `VITE_LOGO_URL` is set)
+- [x] Wire config approach A (Vite env). See `client/.env.example`
+- [ ] Option B — `GET /api/branding` for deploy-time changes without a client rebuild
+- [ ] Option C — admin branding panel
 - [ ] Document deploy-specific values for your org
 
 ## Figma workflow

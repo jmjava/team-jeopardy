@@ -30,9 +30,18 @@ defineEmits(['open', 'reveal', 'back'])
     </div>
 
     <div class="actions">
-      <button class="ok large" @click="$emit('open')">Show clue &amp; open buzzers</button>
-      <button class="secondary" @click="$emit('reveal')">Skip to reveal</button>
-      <button class="secondary" @click="$emit('back')">Back to board</button>
+      <button class="ok large" @click="$emit('open')">
+        Show clue &amp; open buzzers
+        <span class="key" aria-hidden="true">Enter</span>
+      </button>
+      <button class="secondary" @click="$emit('reveal')">
+        Skip to reveal
+        <span class="key" aria-hidden="true">R</span>
+      </button>
+      <button class="secondary" @click="$emit('back')">
+        Back to board
+        <span class="key" aria-hidden="true">Esc</span>
+      </button>
     </div>
   </section>
 </template>
@@ -117,7 +126,7 @@ defineEmits(['open', 'reveal', 'back'])
 .answer-pane h3 {
   margin: 0 0 0.5rem;
   font-size: clamp(1.4rem, 2.5vw, 1.9rem);
-  color: #b9f5d4;
+  color: var(--answer-text);
 }
 
 .note {
@@ -140,6 +149,25 @@ defineEmits(['open', 'reveal', 'back'])
 .large {
   font-size: 1.05rem;
   padding: 0.9rem 1.35rem;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+}
+
+.actions button {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+}
+
+.key {
+  font-size: 0.68rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  opacity: 0.75;
+  font-weight: 600;
 }
 
 @keyframes rise {

@@ -15,6 +15,7 @@ import org.springframework.web.server.ResponseStatusException;
  * Clients send actions to /app/room/{roomId}/action.
  * Public/shared displays subscribe to /topic/room.{roomId}.
  * Moderator consoles also subscribe to /topic/room.{roomId}.host for full clue text.
+ * Action rejections are published to /topic/room.{roomId}.errors (session stays open).
  */
 @Controller
 public class GameWsController {
@@ -37,6 +38,20 @@ public class GameWsController {
         } catch (ResponseStatusException ex) {
             // Keep the STOMP session open: a lost buzz race must not kick the player.
             log.info("Rejected {} in room {}: {}", action == null ? null : action.type(), roomId, ex.getReason());
+            broadcaster.sendActionError(
+                    roomId,
+                    action == null ? null : action.playerId(),
+                    action == null ? null : action.type(),
+                    ex.getReason()
+            );
+        } catch (RuntimeException ex) {
+            log.warn("Failed {} in room {}: {}", action == null ? null : action.type(), roomId, ex.getMessage());
+            broadcaster.sendActionError(
+                    roomId,
+                    action == null ? null : action.playerId(),
+                    action == null ? null : action.type(),
+                    "Action failed"
+            );
         }
     }
 }
