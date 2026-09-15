@@ -77,13 +77,13 @@ View routing uses the `?view=` query parameter: default app, `display` (projecto
 
 ## White-label overview
 
-The app ships with a fixed “Team Jeopardy” look today. White-labeling logo and colors would touch:
+The app ships with a default “Team Jeopardy” look. **Option A (Vite env)** is implemented via `client/src/theme.js` and `BrandHeader.vue`. Options B and C remain available for deploy-time / admin branding.
 
 | Asset | Where it appears today |
 |-------|------------------------|
-| App name | `App.vue` header, `index.html` title, `LobbyView.vue` defaults, `SharedDisplay.vue` fallback |
-| Logo | Not implemented — text-only brand; slots marked in `04-white-label-guide.svg` |
-| Colors | `client/src/styles.css` CSS variables; some hardcoded hex in `BoardView.vue` and `ModeratorConsole.vue` |
+| App name | `BrandHeader.vue`, `LobbyView.vue` defaults, `SharedDisplay.vue` fallback, `document.title` |
+| Logo | Optional `VITE_LOGO_URL` in `BrandHeader.vue`; default favicon is `client/public/favicon.svg` |
+| Colors | `client/src/styles.css` CSS variables, applied at boot by `theme.js` |
 
 Three configuration approaches (detailed in `04-white-label-guide.svg`):
 
