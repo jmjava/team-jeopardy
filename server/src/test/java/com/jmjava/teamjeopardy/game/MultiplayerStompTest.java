@@ -138,7 +138,9 @@ class MultiplayerStompTest {
                 "sampleType", "maven",
                 "boardTitle", "Error Maven"
         ));
+        await(hostInbox, s -> s.board() != null && s.board().categories() != null && !s.board().categories().isEmpty());
         send(hostInbox.session, roomId, new GameAction("ADMIT_ALL", hostId, null, Map.of()));
+        await(hostInbox, s -> s.players().stream().anyMatch(p -> !p.host() && p.admitted()));
         send(hostInbox.session, roomId, new GameAction("START", hostId, null, Map.of()));
         GameSnapshot board = await(hostInbox, s -> s.phase() == GamePhase.BOARD);
         String clueId = firstOpenClueId(board);
