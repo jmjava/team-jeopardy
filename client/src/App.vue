@@ -368,9 +368,13 @@ async function flashCopied(label) {
 }
 
 async function copyValue(text, label) {
+  if (!text) return
+  flashCopied(label)
   const ok = await copyText(text)
-  if (ok) flashCopied(label)
-  else error.value = 'Could not copy to clipboard'
+  if (!ok) {
+    copied.value = ''
+    error.value = 'Could not copy to clipboard — select the room code and copy it manually'
+  }
 }
 
 function copyCode() {
