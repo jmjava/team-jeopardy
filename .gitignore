@@ -20,6 +20,10 @@
 *.log
 npm-debug.log*
 
+# Playwright
+client/test-results/
+client/playwright-report/
+
 # Local SQLite question bank
 **/data/
 *.db

@@ -4,6 +4,7 @@ import {
   browseGithub,
   createRoom,
   getHealth,
+  getRoom,
   ingestBoard,
   ingestJiraBoard,
   joinRoom,
@@ -11,6 +12,7 @@ import {
   postAction
 } from './api'
 import { connectGameSocket } from './useGameSocket'
+import { applySnapshot } from './sync'
 import LobbyView from './components/LobbyView.vue'
 import ModeratorConsole from './components/ModeratorConsole.vue'
 import QuestionBankAdmin from './components/QuestionBankAdmin.vue'
@@ -87,27 +89,37 @@ async function refreshHealth() {
 }
 refreshHealth()
 
+function acceptSnapshot(next) {
+  const applied = applySnapshot(snapshot.value, next)
+  if (applied !== next) {
+    return
+  }
+  snapshot.value = next
+  const self = (next.players || []).find((p) => p.id === session.playerId)
+  session.admitted = !!self?.admitted || session.isHost
+}
+
+async function resyncFromServer() {
+  if (!session.roomId) return
+  try {
+    const snap = await getRoom(session.roomId, session.playerId || undefined)
+    acceptSnapshot(snap)
+  } catch (err) {
+    console.warn('Realtime resync failed', err)
+  }
+}
+
 function bindSocket(roomId, isHost) {
   socket?.disconnect()
   socket = connectGameSocket({
     roomId,
     isHost,
-    onSnapshot: (next) => {
-      const incoming = next?.revision
-      const current = snapshot.value?.revision
-      if (
-        typeof incoming === 'number' &&
-        typeof current === 'number' &&
-        incoming < current
-      ) {
-        return
-      }
-      snapshot.value = next
-      const self = (next.players || []).find((p) => p.id === session.playerId)
-      session.admitted = !!self?.admitted || session.isHost
-    },
+    onSnapshot: (next) => acceptSnapshot(next),
     onStatus: (status) => {
       socketStatus.value = status
+    },
+    onReady: () => {
+      void resyncFromServer()
     }
   })
 }

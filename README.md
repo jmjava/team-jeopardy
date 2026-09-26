@@ -167,6 +167,8 @@ cd client && npm install && npm run dev
 
 Open http://localhost:5173 — create a room, ingest Maven / Gradle / Vue / Python sample, start game.
 
+Remote clients share a monotonic `revision` on every snapshot. The Vue app drops late packets and **GET-resyncs on every STOMP connect** so a dropped player or display catches up without waiting for the next host action. Buzz races are serialized on the room lock: one winner, losers stay connected.
+
 ### Custom path
 
 ```bash
@@ -188,6 +190,7 @@ curl -s -X POST http://localhost:8080/api/rooms/ingest \
 - `FullGamePlayTest` — two teams play a 10-clue board to `FINISHED` (admit gate, host-preview redaction, miss/reopen, Daily Double badge, host reveal, late admit, exact scores)
 - `RealPlaySimulationTest` — HTTP play-through of a Maven sample board, a JIRA fixture board, and a question-bank `load-board`
 - `MultiplayerStompTest` — four-client STOMP table, including a compact bank-loaded board played to `FINISHED`
+- `RemoteClientSyncTest` — concurrent HTTP/STOMP buzz (one winner, shared revision) and a dropped client catching up via GET
 
 ```bash
 cd server && mvn test

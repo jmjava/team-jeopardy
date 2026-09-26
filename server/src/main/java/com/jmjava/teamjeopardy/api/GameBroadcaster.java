@@ -21,8 +21,9 @@ public class GameBroadcaster {
     }
 
     public void broadcast(String roomId) {
-        GameSnapshot pub = gameRoomService.publicSnapshot(roomId);
-        GameSnapshot host = gameRoomService.hostSnapshot(roomId);
+        GameRoomService.SnapshotPair views = gameRoomService.snapshotPair(roomId);
+        GameSnapshot pub = views.pub();
+        GameSnapshot host = views.host();
         messagingTemplate.convertAndSend("/topic/room." + pub.roomId(), pub);
         messagingTemplate.convertAndSend("/topic/room-code." + pub.code(), pub);
         messagingTemplate.convertAndSend("/topic/room." + host.roomId() + ".host", host);

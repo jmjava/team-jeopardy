@@ -616,6 +616,57 @@ async function main() {
     await playFullBoardRest(roomId, hostId, [p1, p2], 'jira-fixture')
   })
 
+  await scenario('stomp reconnect: dropped player resyncs missed OPEN_BUZZERS', async () => {
+    const table = await openRealtimeTable('Reconnect resync')
+    try {
+      await ingest(table.roomId, table.hostId, {
+        useSample: true,
+        sampleType: 'maven',
+        boardTitle: 'Reconnect Maven'
+      })
+      table.host.send(`/app/room/${table.roomId}/action`, {
+        playerId: table.hostId,
+        type: 'ADMIT_ALL',
+        payload: {}
+      })
+      await table.host.waitFor((s) => s.players?.filter((p) => !p.host && p.admitted).length >= 2)
+      table.host.send(`/app/room/${table.roomId}/action`, {
+        playerId: table.hostId,
+        type: 'START',
+        payload: {}
+      })
+      await table.host.waitFor((s) => s.phase === 'BOARD')
+      const clue = nextJeopardyClue(table.host.latest)
+      table.host.send(`/app/room/${table.roomId}/action`, {
+        playerId: table.hostId,
+        type: 'SELECT_CLUE',
+        payload: { clueId: clue.id }
+      })
+      await table.host.waitFor((s) => s.phase === 'HOST_PREVIEW')
+      await table.players[1].stomp.waitFor((s) => s.phase === 'HOST_PREVIEW')
+
+      const droppedRev = table.players[1].stomp.latest.revision
+      table.players[1].stomp.disconnect()
+
+      table.host.send(`/app/room/${table.roomId}/action`, {
+        playerId: table.hostId,
+        type: 'OPEN_BUZZERS',
+        payload: {}
+      })
+      const open = await table.host.waitFor((s) => s.phase === 'CLUE_OPEN')
+      assert(open.revision > droppedRev, 'host should advance past the dropped client')
+
+      const resync = await must(`/api/rooms/${table.roomId}?playerId=${table.players[1].playerId}`)
+      assert(resync.phase === 'CLUE_OPEN', `resync expected CLUE_OPEN, got ${resync.phase}`)
+      assert(resync.revision === open.revision, `resync revision ${resync.revision} != host ${open.revision}`)
+      assert(resync.activeClue?.prompt, 'resync must include the public prompt')
+      assert(!resync.activeClue?.response, 'resync must stay redacted for a player')
+      console.log(`    dropped at rev ${droppedRev}, resynced at rev ${resync.revision} phase=${resync.phase}`)
+    } finally {
+      table.close()
+    }
+  })
+
   await scenario('question-bank load: compact board plays to FINISHED', async () => {
     const saved = await must('/api/question-bank', {
       method: 'POST',

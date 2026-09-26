@@ -372,6 +372,17 @@ public class GameRoomService {
         return withRoomId(roomId, GameRoom::hostSnapshot);
     }
 
+    /**
+     * Public and host views of the same revision, captured under one room lock
+     * so a concurrent buzz/judge cannot split the pair mid-broadcast.
+     */
+    public record SnapshotPair(GameSnapshot pub, GameSnapshot host) {
+    }
+
+    public SnapshotPair snapshotPair(String roomId) {
+        return withRoomId(roomId, room -> new SnapshotPair(room.publicSnapshot(), room.hostSnapshot()));
+    }
+
     private GameSnapshot snapshotFor(GameRoom room, String playerId) {
         if (playerId != null && playerId.equals(room.getHostPlayerId())) {
             return room.hostSnapshot();
