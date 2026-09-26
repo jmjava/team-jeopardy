@@ -186,7 +186,7 @@ curl -s -X POST http://localhost:8080/api/rooms/ingest \
 `mvn test` now includes **running real-play simulations** (no separate server):
 
 - `FullGamePlayTest` — two teams play a 10-clue board to `FINISHED` (admit gate, host-preview redaction, miss/reopen, Daily Double badge, host reveal, late admit, exact scores)
-- `RealPlaySimulationIT` — HTTP play-through of a Maven sample board, a JIRA fixture board, and a question-bank `load-board`
+- `RealPlaySimulationTest` — HTTP play-through of a Maven sample board, a JIRA fixture board, and a question-bank `load-board`
 - `MultiplayerStompTest` — four-client STOMP table, including a compact bank-loaded board played to `FINISHED`
 
 ```bash

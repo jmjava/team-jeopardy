@@ -19,14 +19,15 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * HTTP simulations of real Friday play against generated boards: Maven sample,
- * JIRA release fixture, and a question-bank load. Runs as part of {@code mvn test}.
+ * JIRA release fixture, and a question-bank load. Named {@code *Test} so Surefire
+ * runs it with {@code mvn test} (the {@code *IT} suffix is reserved for Failsafe).
  */
 @SpringBootTest(
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = "team-jeopardy.persistence.path=${java.io.tmpdir}/team-jeopardy-real-play-it.db"
 )
 @Timeout(value = 3, unit = TimeUnit.MINUTES)
-class RealPlaySimulationIT {
+class RealPlaySimulationTest {
 
     @LocalServerPort
     int port;
