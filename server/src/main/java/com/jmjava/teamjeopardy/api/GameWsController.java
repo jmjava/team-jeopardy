@@ -1,7 +1,9 @@
 package com.jmjava.teamjeopardy.api;
 
+import com.jmjava.teamjeopardy.game.ActionReceipt;
 import com.jmjava.teamjeopardy.game.GameAction;
 import com.jmjava.teamjeopardy.game.GameRoomService;
+import com.jmjava.teamjeopardy.game.GameSnapshot;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.messaging.handler.annotation.DestinationVariable;
@@ -31,12 +33,22 @@ public class GameWsController {
 
     @MessageMapping("/room/{roomId}/action")
     public void handleAction(@DestinationVariable String roomId, @Payload GameAction action) {
+        String playerId = action == null ? null : action.playerId();
+        String type = action == null ? null : action.type();
         try {
-            gameRoomService.applyAction(roomId, action);
+            GameSnapshot applied = gameRoomService.applyAction(roomId, action);
             broadcaster.broadcast(roomId);
+            broadcaster.sendReceipt(ActionReceipt.accepted(playerId, type, applied));
         } catch (ResponseStatusException ex) {
             // Keep the STOMP session open: a lost buzz race must not kick the player.
-            log.info("Rejected {} in room {}: {}", action == null ? null : action.type(), roomId, ex.getReason());
+            log.info("Rejected {} in room {}: {}", type, roomId, ex.getReason());
+            GameSnapshot current = null;
+            try {
+                current = gameRoomService.publicSnapshot(roomId);
+            } catch (RuntimeException ignored) {
+                // room vanished
+            }
+            broadcaster.sendReceipt(ActionReceipt.rejected(roomId, playerId, type, ex.getReason(), current));
         }
     }
 }

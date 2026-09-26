@@ -6,6 +6,7 @@ const props = defineProps({
   phase: String,
   isHost: Boolean,
   canBuzz: Boolean,
+  lockedOut: Boolean,
   mode: {
     type: String,
     default: 'player' // player | display | host
@@ -78,6 +79,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
       </button>
 
       <p v-if="canBuzz && isLocked" class="locked-msg muted">Buzzers locked</p>
+      <p v-if="lockedOut && isOpen" class="locked-msg muted">You already answered this clue</p>
 
       <template v-if="isHost">
         <button v-if="isPreview" class="ok" @click="emit('open')">

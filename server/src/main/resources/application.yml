@@ -23,6 +23,8 @@ team-jeopardy:
   allowed-origins: "*"
   max-teams: 6
   max-players-per-team: 8
+  # Leftover timer hint. First-buzz exclusivity is lock-based, not timed.
+  # A miss locks that player out of the rest of the clue (Jeopardy rules).
   buzz-lock-ms: 8000
   persistence:
     # SQLite file for guide-generated boards/clues (reuse across sessions)

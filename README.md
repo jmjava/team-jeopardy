@@ -167,6 +167,8 @@ cd client && npm install && npm run dev
 
 Open http://localhost:5173 — create a room, ingest Maven / Gradle / Vue / Python sample, start game.
 
+Remote clients share a monotonic `revision` on every snapshot. The Vue app drops late packets and **GET-resyncs on every STOMP connect** so a dropped player or display catches up without waiting for the next host action. Buzz races are serialized on the room lock: one winner; losers stay connected and get a per-player STOMP receipt (`/topic/room.{id}.player.{playerId}`). A miss locks that player out of the rest of the clue.
+
 ### Custom path
 
 ```bash
@@ -183,17 +185,24 @@ curl -s -X POST http://localhost:8080/api/rooms/ingest \
 
 ## Tests
 
+`mvn test` now includes **running real-play simulations** (no separate server):
+
+- `FullGamePlayTest` — two teams play a 10-clue board to `FINISHED` (admit gate, host-preview redaction, miss/reopen, Daily Double badge, host reveal, late admit, exact scores)
+- `RealPlaySimulationTest` — HTTP play-through of a Maven sample board, a JIRA fixture board, and a question-bank `load-board`
+- `MultiplayerStompTest` — four-client STOMP table, including a compact bank-loaded board played to `FINISHED`
+- `RemoteClientSyncTest` — concurrent HTTP/STOMP buzz (one winner, shared revision) and a dropped client catching up via GET
+
 ```bash
 cd server && mvn test
 cd client && npm test
 ```
 
-Realtime multiplayer (REST lobby + native STOMP table: host, two players, shared display):
+Realtime multiplayer against a running API (REST + native STOMP: host, two players, shared display). Picks clues in Jeopardy order (lowest remaining value, left to right), tracks the scoreboard, and also plays a JIRA fixture and a question-bank load to `FINISHED`:
 
 ```bash
-# with server already running — full STOMP board to FINISHED + sample/GitHub loops
+# with server already running — full STOMP board to FINISHED + sample/GitHub/JIRA/bank loops
 node scripts/simulate-multiplayer-game.mjs
-# samples only (skip GitHub/PR ingest):
+# samples + JIRA fixture + question-bank (skip GitHub/PR ingest):
 SKIP_GITHUB=1 node scripts/simulate-multiplayer-game.mjs
 ```
 

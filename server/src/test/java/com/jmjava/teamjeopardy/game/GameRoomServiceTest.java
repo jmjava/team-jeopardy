@@ -90,6 +90,34 @@ class GameRoomServiceTest {
     }
 
     @Test
+    void incorrectPlayerIsLockedOutForTheRestOfTheClue() {
+        var created = service.createRoom("Pat", "Lockout");
+        String roomId = created.snapshot().roomId();
+        String hostId = created.hostPlayerId();
+        var alex = service.joinRoom(created.snapshot().code(), "Alex", "Blue");
+        var sam = service.joinRoom(created.snapshot().code(), "Sam", "Red");
+        service.admitAll(roomId, hostId);
+        service.installBoard(roomId, hostId, demoBoard("c1"));
+        service.startGame(roomId, hostId);
+        service.selectClue(roomId, hostId, "c1");
+        service.openBuzzers(roomId, hostId);
+
+        service.buzz(roomId, alex.playerId());
+        GameSnapshot reopened = service.judge(roomId, hostId, false);
+        assertEquals(GamePhase.CLUE_OPEN, reopened.phase());
+        assertTrue(reopened.lockedOutPlayerIds().contains(alex.playerId()));
+
+        ResponseStatusException locked = assertThrows(
+                ResponseStatusException.class,
+                () -> service.buzz(roomId, alex.playerId())
+        );
+        assertTrue(locked.getReason().contains("already answered"));
+
+        GameSnapshot second = service.buzz(roomId, sam.playerId());
+        assertEquals(sam.playerId(), second.activeClue().buzzedPlayerId());
+    }
+
+    @Test
     void concurrentBuzzHasSingleWinner() throws Exception {
         var created = service.createRoom("Pat", "Race");
         String roomId = created.snapshot().roomId();
@@ -139,6 +167,81 @@ class GameRoomServiceTest {
         assertEquals(GamePhase.BUZZ_LOCKED, locked.phase());
         assertNotNull(locked.activeClue().buzzedPlayerId());
         assertTrue(playerIds.contains(locked.activeClue().buzzedPlayerId()));
+    }
+
+    @Test
+    void hostAndPublicSnapshotsShareOneRevision() {
+        var created = service.createRoom("Pat", "Pair");
+        String roomId = created.snapshot().roomId();
+        String hostId = created.hostPlayerId();
+        var joined = service.joinRoom(created.snapshot().code(), "Alex", "Blue");
+        service.admitAll(roomId, hostId);
+        service.installBoard(roomId, hostId, demoBoard("c1"));
+        service.startGame(roomId, hostId);
+        service.selectClue(roomId, hostId, "c1");
+
+        GameRoomService.SnapshotPair preview = service.snapshotPair(roomId);
+        assertEquals(preview.pub().revision(), preview.host().revision());
+        assertEquals(GamePhase.HOST_PREVIEW, preview.pub().phase());
+        assertEquals(GamePhase.HOST_PREVIEW, preview.host().phase());
+        assertNull(preview.pub().activeClue().prompt());
+        assertNotNull(preview.host().activeClue().prompt());
+
+        service.openBuzzers(roomId, hostId);
+        service.buzz(roomId, joined.playerId());
+        GameRoomService.SnapshotPair locked = service.snapshotPair(roomId);
+        assertEquals(locked.pub().revision(), locked.host().revision());
+        assertEquals(GamePhase.BUZZ_LOCKED, locked.pub().phase());
+        assertEquals(locked.pub().activeClue().buzzedPlayerId(), locked.host().activeClue().buzzedPlayerId());
+    }
+
+    @Test
+    void concurrentMutationsNeverSplitHostAndPublicRevisions() throws Exception {
+        var created = service.createRoom("Pat", "Burst");
+        String roomId = created.snapshot().roomId();
+        String hostId = created.hostPlayerId();
+        String code = created.snapshot().code();
+        List<String> playerIds = new ArrayList<>();
+        for (int i = 0; i < 6; i++) {
+            playerIds.add(service.joinRoom(code, "P" + i, i % 2 == 0 ? "Blue" : "Red").playerId());
+        }
+        service.admitAll(roomId, hostId);
+        service.installBoard(roomId, hostId, demoBoard("c1"));
+        service.startGame(roomId, hostId);
+        service.selectClue(roomId, hostId, "c1");
+        service.openBuzzers(roomId, hostId);
+
+        ExecutorService pool = Executors.newFixedThreadPool(8);
+        CountDownLatch go = new CountDownLatch(1);
+        List<Future<GameRoomService.SnapshotPair>> pairs = new ArrayList<>();
+        for (int i = 0; i < 6; i++) {
+            String playerId = playerIds.get(i);
+            pool.submit(() -> {
+                go.await();
+                try {
+                    service.buzz(roomId, playerId);
+                } catch (ResponseStatusException ignored) {
+                    // losing buzz
+                }
+                return null;
+            });
+        }
+        for (int i = 0; i < 12; i++) {
+            pairs.add(pool.submit(() -> {
+                go.await();
+                return service.snapshotPair(roomId);
+            }));
+        }
+        go.countDown();
+        for (Future<GameRoomService.SnapshotPair> future : pairs) {
+            GameRoomService.SnapshotPair pair = future.get(3, TimeUnit.SECONDS);
+            assertEquals(pair.pub().revision(), pair.host().revision(), "broadcast pair split");
+            assertEquals(pair.pub().phase(), pair.host().phase());
+        }
+        pool.shutdownNow();
+        GameRoomService.SnapshotPair end = service.snapshotPair(roomId);
+        assertEquals(end.pub().revision(), end.host().revision());
+        assertEquals(GamePhase.BUZZ_LOCKED, end.pub().phase());
     }
 
     private static Board demoBoard(String clueId) {

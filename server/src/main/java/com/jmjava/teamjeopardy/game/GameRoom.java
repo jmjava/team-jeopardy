@@ -7,9 +7,11 @@ import com.jmjava.teamjeopardy.quiz.Clue;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 public class GameRoom {
 
@@ -26,6 +28,7 @@ public class GameRoom {
     private final Map<String, BoardCellState> cells = new LinkedHashMap<>();
     private String questionHints = "";
     private int revision;
+    private final Set<String> lockedOutPlayerIds = new LinkedHashSet<>();
     private final Object lock = new Object();
 
     Object lock() {
@@ -126,7 +129,26 @@ public class GameRoom {
         }
         this.activeClue = null;
         this.phase = GamePhase.LOBBY;
+        lockedOutPlayerIds.clear();
         bumpRevision();
+    }
+
+    public void clearLockouts() {
+        lockedOutPlayerIds.clear();
+    }
+
+    public void lockOut(String playerId) {
+        if (playerId != null && !playerId.isBlank()) {
+            lockedOutPlayerIds.add(playerId);
+        }
+    }
+
+    public boolean isLockedOut(String playerId) {
+        return playerId != null && lockedOutPlayerIds.contains(playerId);
+    }
+
+    public List<String> lockedOutPlayerIds() {
+        return List.copyOf(lockedOutPlayerIds);
     }
 
     public String getQuestionHints() {
@@ -190,7 +212,8 @@ public class GameRoom {
                 new ArrayList<>(teams.values()),
                 new ArrayList<>(players.values()),
                 new ArrayList<>(cells.values()),
-                questionHints
+                questionHints,
+                List.copyOf(lockedOutPlayerIds)
         );
     }
 

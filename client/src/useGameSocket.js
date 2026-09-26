@@ -4,9 +4,17 @@ import SockJS from 'sockjs-client'
 const WS_URL = import.meta.env.VITE_WS_URL || '/ws'
 
 /**
- * @param {{ roomId: string, isHost?: boolean, onSnapshot: Function, onStatus?: Function }} opts
+ * @param {{ roomId: string, playerId?: string, isHost?: boolean, onSnapshot: Function, onStatus?: Function, onReady?: Function, onReceipt?: Function }} opts
  */
-export function connectGameSocket({ roomId, isHost = false, onSnapshot, onStatus }) {
+export function connectGameSocket({
+  roomId,
+  playerId,
+  isHost = false,
+  onSnapshot,
+  onStatus,
+  onReady,
+  onReceipt
+}) {
   const client = new Client({
     webSocketFactory: () => new SockJS(WS_URL),
     reconnectDelay: 2000,
@@ -32,6 +40,18 @@ export function connectGameSocket({ roomId, isHost = false, onSnapshot, onStatus
           }
         })
       }
+      if (playerId) {
+        client.subscribe(`/topic/room.${roomId}.player.${playerId}`, (message) => {
+          try {
+            onReceipt?.(JSON.parse(message.body))
+          } catch (err) {
+            console.error('Failed to parse action receipt', err)
+          }
+        })
+      }
+      // Pull current state after subscribe so a dropped client does not wait
+      // for the next host action to catch up.
+      onReady?.()
     },
     onDisconnect: () => onStatus?.('disconnected'),
     onStompError: () => onStatus?.('error'),
