@@ -183,17 +183,23 @@ curl -s -X POST http://localhost:8080/api/rooms/ingest \
 
 ## Tests
 
+`mvn test` now includes **running real-play simulations** (no separate server):
+
+- `FullGamePlayTest` — two teams play a 10-clue board to `FINISHED` (admit gate, host-preview redaction, miss/reopen, Daily Double badge, host reveal, late admit, exact scores)
+- `RealPlaySimulationIT` — HTTP play-through of a Maven sample board, a JIRA fixture board, and a question-bank `load-board`
+- `MultiplayerStompTest` — four-client STOMP table, including a compact bank-loaded board played to `FINISHED`
+
 ```bash
 cd server && mvn test
 cd client && npm test
 ```
 
-Realtime multiplayer (REST lobby + native STOMP table: host, two players, shared display):
+Realtime multiplayer against a running API (REST + native STOMP: host, two players, shared display). Picks clues in Jeopardy order (lowest remaining value, left to right), tracks the scoreboard, and also plays a JIRA fixture and a question-bank load to `FINISHED`:
 
 ```bash
-# with server already running — full STOMP board to FINISHED + sample/GitHub loops
+# with server already running — full STOMP board to FINISHED + sample/GitHub/JIRA/bank loops
 node scripts/simulate-multiplayer-game.mjs
-# samples only (skip GitHub/PR ingest):
+# samples + JIRA fixture + question-bank (skip GitHub/PR ingest):
 SKIP_GITHUB=1 node scripts/simulate-multiplayer-game.mjs
 ```
 

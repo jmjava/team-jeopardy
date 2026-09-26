@@ -7,6 +7,9 @@
  *   - lobby admit gate (unadmitted cannot buzz / cannot start without admit)
  *   - host preview vs public redaction
  *   - open buzzers, buzz race, incorrect reopen, correct judge, reveal, return
+ *   - full-board score tracking (Jeopardy order: $200s across, then $400s, …)
+ *   - JIRA fixture ingest + play
+ *   - question-bank save/load + compact play to FINISHED
  *
  * Usage:
  *   node scripts/simulate-multiplayer-game.mjs [owner/repo] [ref] [folder]
@@ -132,17 +135,41 @@ async function ingest(roomId, hostId, body) {
 
 function unansweredClues(snap) {
   const open = []
-  for (const cat of snap.board?.categories || []) {
+  const cats = snap.board?.categories || []
+  cats.forEach((cat, categoryIndex) => {
     for (const clue of cat.clues || []) {
       const cell = (snap.cells || []).find((c) => c.clueId === clue.id)
-      if (!cell?.answered) open.push(clue)
+      if (!cell?.answered) {
+        open.push({
+          ...clue,
+          categoryTitle: cat.title,
+          categoryIndex
+        })
+      }
     }
-  }
+  })
   return open
 }
 
 function firstOpenClue(snap) {
-  return unansweredClues(snap)[0] || null
+  return nextJeopardyClue(snap)
+}
+
+/** Real-play pick: lowest remaining value, left-to-right across categories. */
+function nextJeopardyClue(snap) {
+  const open = unansweredClues(snap)
+  open.sort((a, b) => a.value - b.value || a.categoryIndex - b.categoryIndex)
+  return open[0] || null
+}
+
+function teamScore(snap, name) {
+  return (snap.teams || []).find((t) => t.name === name)?.score ?? 0
+}
+
+function assertScores(snap, expected, label) {
+  for (const [name, value] of Object.entries(expected)) {
+    assert(teamScore(snap, name) === value, `${label}: ${name} expected ${value}, got ${teamScore(snap, name)}`)
+  }
 }
 
 function scoreboard(snap) {
@@ -155,10 +182,13 @@ function boardStats(snap) {
   return { total, answered, remaining: total - answered }
 }
 
-async function playThroughClueStomp(table, { incorrectFirst = true } = {}) {
+async function playThroughClueStomp(table, { incorrectFirst = true, expected } = {}) {
   const { roomId, hostId, host, display, players } = table
-  const clue = firstOpenClue(host.latest)
+  const clue = nextJeopardyClue(host.latest)
   assert(clue, 'No unanswered clue')
+  if (clue.dailyDouble) {
+    console.log(`    Daily Double on ${clue.categoryTitle} $${clue.value}`)
+  }
 
   host.send(`/app/room/${roomId}/action`, {
     playerId: hostId,
@@ -189,9 +219,11 @@ async function playThroughClueStomp(table, { incorrectFirst = true } = {}) {
 
     host.send(`/app/room/${roomId}/action`, { playerId: hostId, type: 'JUDGE', payload: { correct: false } })
     await p2.stomp.waitFor((s) => s.phase === 'CLUE_OPEN')
+    if (expected) expected['Blue Owls'] = (expected['Blue Owls'] || 0) - clue.value
     p2.stomp.send(`/app/room/${roomId}/action`, { playerId: p2.playerId, type: 'BUZZ', payload: {} })
     await host.waitFor((s) => s.phase === 'BUZZ_LOCKED' && s.activeClue?.buzzedPlayerId === p2.playerId)
     host.send(`/app/room/${roomId}/action`, { playerId: hostId, type: 'JUDGE', payload: { correct: true } })
+    if (expected) expected['Red Foxes'] = (expected['Red Foxes'] || 0) + clue.value
   } else if (p2) {
     p1.stomp.send(`/app/room/${roomId}/action`, { playerId: p1.playerId, type: 'BUZZ', payload: {} })
     p2.stomp.send(`/app/room/${roomId}/action`, { playerId: p2.playerId, type: 'BUZZ', payload: {} })
@@ -201,27 +233,36 @@ async function playThroughClueStomp(table, { incorrectFirst = true } = {}) {
         winner.activeClue?.buzzedPlayerId === p2.playerId
     )
     host.send(`/app/room/${roomId}/action`, { playerId: hostId, type: 'JUDGE', payload: { correct: true } })
+    if (expected) {
+      const team = winner.activeClue?.buzzedPlayerId === p1.playerId ? 'Blue Owls' : 'Red Foxes'
+      expected[team] = (expected[team] || 0) + clue.value
+    }
   } else {
     p1.stomp.send(`/app/room/${roomId}/action`, { playerId: p1.playerId, type: 'BUZZ', payload: {} })
     await host.waitFor((s) => s.phase === 'BUZZ_LOCKED')
     host.send(`/app/room/${roomId}/action`, { playerId: hostId, type: 'JUDGE', payload: { correct: true } })
+    if (expected) expected['Blue Owls'] = (expected['Blue Owls'] || 0) + clue.value
   }
 
   const revealed = await display.waitFor((s) => s.phase === 'ANSWER_REVEALED')
   assert(revealed.activeClue?.responseVisible, 'Answer should be visible after correct')
+  if (expected) assertScores(revealed, expected, 'stomp after judge')
   host.send(`/app/room/${roomId}/action`, { playerId: hostId, type: 'RETURN_BOARD', payload: {} })
-  return host.waitFor((s) => s.phase === 'BOARD' || s.phase === 'FINISHED')
+  const next = await host.waitFor((s) => s.phase === 'BOARD' || s.phase === 'FINISHED')
+  if (expected) assertScores(next, expected, 'stomp after return')
+  return next
 }
 
 async function playFullBoardStomp(table) {
   const start = boardStats(table.host.latest)
   assert(start.total > 0, 'Board has no cells')
   console.log(`    full board: ${start.total} clues across ${(table.host.latest.board?.categories || []).length} categories`)
+  const expected = { 'Blue Owls': 0, 'Red Foxes': 0 }
   let round = 0
   let phase = table.host.latest
   while (unansweredClues(phase).length > 0) {
     round += 1
-    phase = await playThroughClueStomp(table, { incorrectFirst: round % 2 === 1 })
+    phase = await playThroughClueStomp(table, { incorrectFirst: round % 2 === 1, expected })
     const stats = boardStats(phase)
     console.log(
       `    clue ${round}/${start.total} remaining=${stats.remaining} ${scoreboard(phase)} phase=${phase.phase}`
@@ -230,6 +271,7 @@ async function playFullBoardStomp(table) {
   }
   assert(phase.phase === 'FINISHED', `Expected FINISHED after ${round} clues, got ${phase.phase}`)
   assert(boardStats(phase).remaining === 0, 'Board should be fully answered')
+  assertScores(phase, expected, 'stomp full game')
   await table.display.waitFor((s) => s.phase === 'FINISHED' && s.revision >= phase.revision)
   console.log(`    FULL GAME finished after ${round} clues; ${scoreboard(phase)}`)
   return phase
@@ -262,10 +304,13 @@ async function openRealtimeTable(title) {
   }
 }
 
-async function playThroughClue(roomId, hostId, players, { incorrectFirst = true } = {}) {
+async function playThroughClue(roomId, hostId, players, { incorrectFirst = true, expected } = {}) {
   let snap = await must(`/api/rooms/${roomId}?playerId=${hostId}`)
-  const clue = firstOpenClue(snap)
+  const clue = nextJeopardyClue(snap)
   assert(clue, 'No unanswered clue')
+  if (clue.dailyDouble) {
+    console.log(`    Daily Double on ${clue.categoryTitle} $${clue.value}`)
+  }
 
   snap = await action(roomId, hostId, 'SELECT_CLUE', { clueId: clue.id })
   assert(snap.phase === 'HOST_PREVIEW', `Expected HOST_PREVIEW, got ${snap.phase}`)
@@ -291,10 +336,12 @@ async function playThroughClue(roomId, hostId, players, { incorrectFirst = true 
     snap = await action(roomId, hostId, 'JUDGE', { correct: false })
     assert(snap.phase === 'CLUE_OPEN', 'Incorrect judge should reopen buzzers')
     assert(!snap.activeClue?.buzzedPlayerId, 'Buzz lock should clear after incorrect')
+    if (expected) expected['Blue Owls'] = (expected['Blue Owls'] || 0) - clue.value
 
     snap = await action(roomId, p2.playerId, 'BUZZ')
     assert(snap.phase === 'BUZZ_LOCKED', 'Second player should buzz after reopen')
     snap = await action(roomId, hostId, 'JUDGE', { correct: true })
+    if (expected) expected['Red Foxes'] = (expected['Red Foxes'] || 0) + clue.value
   } else if (p2) {
     // Race: both try; only first wins
     const buzzResults = await Promise.allSettled([
@@ -303,21 +350,51 @@ async function playThroughClue(roomId, hostId, players, { incorrectFirst = true 
     ])
     const winner = buzzResults.find((r) => r.status === 'fulfilled')?.value
     assert(winner?.phase === 'BUZZ_LOCKED', 'Expected first buzz to lock')
+    if (expected) {
+      const team = winner.activeClue?.buzzedPlayerId === p1.playerId ? 'Blue Owls' : 'Red Foxes'
+      expected[team] = (expected[team] || 0) + clue.value
+    }
     snap = await action(roomId, hostId, 'JUDGE', { correct: true })
   } else {
     snap = await action(roomId, p1.playerId, 'BUZZ')
     assert(snap.phase === 'BUZZ_LOCKED', 'Expected BUZZ_LOCKED')
     snap = await action(roomId, hostId, 'JUDGE', { correct: true })
+    if (expected) expected['Blue Owls'] = (expected['Blue Owls'] || 0) + clue.value
   }
 
   assert(snap.phase === 'ANSWER_REVEALED', `Expected ANSWER_REVEALED, got ${snap.phase}`)
   assert(snap.activeClue?.responseVisible, 'Answer should be visible after correct')
+  if (expected) assertScores(snap, expected, 'rest after judge')
 
   snap = await action(roomId, hostId, 'RETURN_BOARD')
   assert(
     snap.phase === 'BOARD' || snap.phase === 'FINISHED',
     `Expected BOARD or FINISHED, got ${snap.phase}`
   )
+  if (expected) assertScores(snap, expected, 'rest after return')
+  return snap
+}
+
+async function playFullBoardRest(roomId, hostId, players, label) {
+  let snap = await must(`/api/rooms/${roomId}?playerId=${hostId}`)
+  const start = boardStats(snap)
+  const expected = { 'Blue Owls': 0, 'Red Foxes': 0 }
+  let round = 0
+  while (unansweredClues(snap).length > 0) {
+    round += 1
+    snap = await playThroughClue(roomId, hostId, players, {
+      incorrectFirst: round % 2 === 1,
+      expected
+    })
+    const stats = boardStats(snap)
+    console.log(
+      `    ${label} clue ${round}/${start.total} remaining=${stats.remaining} ${scoreboard(snap)} phase=${snap.phase}`
+    )
+    if (snap.phase === 'FINISHED') break
+  }
+  assert(snap.phase === 'FINISHED', `${label} expected FINISHED, got ${snap.phase}`)
+  assert(boardStats(snap).remaining === 0, `${label} leftover cells`)
+  assertScores(snap, expected, label)
   return snap
 }
 
@@ -510,6 +587,111 @@ async function main() {
   } else {
     console.log('\n(skipping GitHub scenarios — SKIP_GITHUB=1)')
   }
+
+  await scenario('jira fixture: one-project board plays to FINISHED', async () => {
+    const { roomId, code, hostId } = await createRoom('JIRA Storefront 2.4.0')
+    const p1 = await join(code, 'Alex', 'Blue Owls')
+    const p2 = await join(code, 'Sam', 'Red Foxes')
+    const board = await must('/api/rooms/ingest-jira', {
+      method: 'POST',
+      body: JSON.stringify({
+        roomId,
+        playerId: hostId,
+        projects: ['PROJ'],
+        release: '2.4.0',
+        useFixture: true,
+        fixture: 'one-project',
+        boardTitle: 'Storefront 2.4.0',
+        questionHints: 'Acceptance criteria and release risk'
+      })
+    })
+    assert(board.snapshot.board?.categories?.length >= 5, 'JIRA fixture board too small')
+    assert(board.ingestSummary?.source === 'jira-fixture', 'expected jira-fixture source')
+    console.log(
+      `    jira categories=${board.ingestSummary?.categories}`,
+      `titles=${(board.ingestSummary?.categoryTitles || []).slice(0, 4).join(' | ')}`
+    )
+    await action(roomId, hostId, 'ADMIT_ALL')
+    await action(roomId, hostId, 'START')
+    await playFullBoardRest(roomId, hostId, [p1, p2], 'jira-fixture')
+  })
+
+  await scenario('question-bank load: compact board plays to FINISHED', async () => {
+    const saved = await must('/api/question-bank', {
+      method: 'POST',
+      body: JSON.stringify({
+        title: 'Sim compact drill',
+        sourceKind: 'manual',
+        sourceKey: `manual:sim-compact-${Date.now()}`,
+        questionHints: 'Short live-play drill',
+        categories: [
+          {
+            title: 'DEV: Patterns',
+            clues: [
+              {
+                value: 200,
+                prompt: 'Reusable Vue logic lives here',
+                response: 'What is a composable?',
+                dailyDouble: false
+              },
+              {
+                value: 400,
+                prompt: 'Daily Double: name the factory cousin',
+                response: 'What is Factory Method?',
+                dailyDouble: true
+              }
+            ]
+          },
+          {
+            title: 'QA: Blast Radius',
+            clues: [
+              {
+                value: 200,
+                prompt: 'Unadmitted players must not do this',
+                response: 'What is buzz?',
+                dailyDouble: false
+              },
+              {
+                value: 400,
+                prompt: 'Last clue of the drill',
+                response: 'What is FINISHED?',
+                dailyDouble: false
+              }
+            ]
+          }
+        ]
+      })
+    })
+    assert(saved.id, 'question-bank create missing id')
+
+    const table = await openRealtimeTable('Bank load STOMP')
+    try {
+      const loaded = await must('/api/rooms/load-board', {
+        method: 'POST',
+        body: JSON.stringify({
+          roomId: table.roomId,
+          playerId: table.hostId,
+          savedBoardId: saved.id
+        })
+      })
+      assert(loaded.ingestSummary?.source === 'question-bank', 'load-board source')
+      table.host.send(`/app/room/${table.roomId}/action`, {
+        playerId: table.hostId,
+        type: 'ADMIT_ALL',
+        payload: {}
+      })
+      await table.host.waitFor((s) => s.players?.filter((p) => !p.host && p.admitted).length >= 2)
+      table.host.send(`/app/room/${table.roomId}/action`, {
+        playerId: table.hostId,
+        type: 'START',
+        payload: {}
+      })
+      await table.host.waitFor((s) => s.phase === 'BOARD')
+      await playFullBoardStomp(table)
+    } finally {
+      table.close()
+    }
+  })
 
   console.log(`\n==== results: ${passed} passed, ${failed} failed ====`)
   if (failures.length) {
