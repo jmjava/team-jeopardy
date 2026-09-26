@@ -167,7 +167,7 @@ cd client && npm install && npm run dev
 
 Open http://localhost:5173 — create a room, ingest Maven / Gradle / Vue / Python sample, start game.
 
-Remote clients share a monotonic `revision` on every snapshot. The Vue app drops late packets and **GET-resyncs on every STOMP connect** so a dropped player or display catches up without waiting for the next host action. Buzz races are serialized on the room lock: one winner, losers stay connected.
+Remote clients share a monotonic `revision` on every snapshot. The Vue app drops late packets and **GET-resyncs on every STOMP connect** so a dropped player or display catches up without waiting for the next host action. Buzz races are serialized on the room lock: one winner; losers stay connected and get a per-player STOMP receipt (`/topic/room.{id}.player.{playerId}`). A miss locks that player out of the rest of the clue.
 
 ### Custom path
 

@@ -41,6 +41,7 @@ const session = reactive({
 
 const snapshot = ref(null)
 const socketStatus = ref('idle')
+const actionNotice = ref('')
 const error = ref('')
 const busy = ref(false)
 const ingestSummary = ref(null)
@@ -53,6 +54,9 @@ const me = computed(() =>
   (snapshot.value?.players || []).find((p) => p.id === session.playerId)
 )
 const admitted = computed(() => session.isHost || !!me.value?.admitted)
+const lockedOut = computed(() =>
+  (snapshot.value?.lockedOutPlayerIds || []).includes(session.playerId)
+)
 const myTeamName = computed(() => {
   const teamId = me.value?.teamId
   return snapshot.value?.teams?.find((t) => t.id === teamId)?.name || ''
@@ -113,6 +117,7 @@ function bindSocket(roomId, isHost) {
   socket?.disconnect()
   socket = connectGameSocket({
     roomId,
+    playerId: session.playerId,
     isHost,
     onSnapshot: (next) => acceptSnapshot(next),
     onStatus: (status) => {
@@ -120,6 +125,18 @@ function bindSocket(roomId, isHost) {
     },
     onReady: () => {
       void resyncFromServer()
+    },
+    onReceipt: (receipt) => {
+      if (!receipt) return
+      if (receipt.accepted) {
+        actionNotice.value = ''
+        return
+      }
+      actionNotice.value = receipt.reason || 'Action rejected'
+      const localRev = snapshot.value?.revision
+      if (typeof receipt.revision === 'number' && typeof localRev === 'number' && receipt.revision > localRev) {
+        void resyncFromServer()
+      }
     }
   })
 }
@@ -174,6 +191,7 @@ async function onJoin(form) {
 
 async function runAction(type, payload = {}) {
   error.value = ''
+  actionNotice.value = ''
   try {
     if (socket && socketStatus.value === 'connected') {
       socket.sendAction({
@@ -416,6 +434,7 @@ onBeforeUnmount(() => socket?.disconnect())
     </header>
 
     <p v-if="error" class="error">{{ error }}</p>
+    <p v-if="actionNotice" class="notice">{{ actionNotice }}</p>
 
     <LobbyView
       v-if="!session.roomId"
@@ -494,7 +513,8 @@ onBeforeUnmount(() => socket?.disconnect())
         :clue="snapshot?.activeClue"
         :phase="phase"
         :is-host="session.isHost"
-        :can-buzz="admitted && !session.isHost"
+        :can-buzz="admitted && !session.isHost && !lockedOut"
+        :locked-out="lockedOut"
         @buzz="runAction('BUZZ')"
         @judge="(correct) => runAction('JUDGE', { correct })"
         @reveal="runAction('REVEAL')"
@@ -561,6 +581,15 @@ onBeforeUnmount(() => socket?.disconnect())
   background: rgba(232, 93, 76, 0.15);
   border: 1px solid rgba(232, 93, 76, 0.45);
   color: #ffd2cc;
+  padding: 0.75rem 1rem;
+  border-radius: 12px;
+  margin-bottom: 1rem;
+}
+
+.notice {
+  background: rgba(232, 197, 71, 0.14);
+  border: 1px solid rgba(232, 197, 71, 0.4);
+  color: #ffe7a3;
   padding: 0.75rem 1rem;
   border-radius: 12px;
   margin-bottom: 1rem;

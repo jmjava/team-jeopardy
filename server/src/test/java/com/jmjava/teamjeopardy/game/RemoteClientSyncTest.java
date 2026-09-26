@@ -1,5 +1,6 @@
 package com.jmjava.teamjeopardy.game;
 
+import com.jmjava.teamjeopardy.api.GameBroadcaster;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
@@ -37,6 +38,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.Predicate;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -138,6 +140,50 @@ class RemoteClientSyncTest {
         p1.disconnect();
         p2.disconnect();
         display.disconnect();
+    }
+
+    @Test
+    void losingBuzzReceivesRejectedReceiptWithoutDisconnect() throws Exception {
+        Table table = openTable(2);
+        String p1Id = table.playerIds.get(0);
+        String p2Id = table.playerIds.get(1);
+        SnapshotInbox hostInbox = connect("/topic/room." + table.roomId + ".host");
+        SnapshotInbox publicInbox = connect("/topic/room." + table.roomId);
+        ReceiptInbox r1 = connectReceipt(table.roomId, p1Id);
+        ReceiptInbox r2 = connectReceipt(table.roomId, p2Id);
+        Thread.sleep(200);
+
+        openFirstClue(table);
+        await(hostInbox, s -> s.phase() == GamePhase.CLUE_OPEN);
+
+        send(r1.session, table.roomId, new GameAction("BUZZ", p1Id, null, Map.of()));
+        send(r2.session, table.roomId, new GameAction("BUZZ", p2Id, null, Map.of()));
+
+        ActionReceipt first = awaitReceipt(r1, r -> "BUZZ".equalsIgnoreCase(r.type()));
+        ActionReceipt second = awaitReceipt(r2, r -> "BUZZ".equalsIgnoreCase(r.type()));
+        long accepted = java.util.stream.Stream.of(first, second).filter(ActionReceipt::accepted).count();
+        assertEquals(1, accepted, "exactly one buzz receipt should be accepted");
+        ActionReceipt lost = first.accepted() ? second : first;
+        assertFalse(lost.accepted());
+        assertNotNull(lost.reason());
+        assertTrue(
+                lost.reason().toLowerCase().contains("already buzzed")
+                        || lost.reason().toLowerCase().contains("not open"),
+                lost.reason()
+        );
+
+        GameSnapshot hostLocked = await(hostInbox, s -> s.phase() == GamePhase.BUZZ_LOCKED);
+        GameSnapshot pubLocked = await(publicInbox, s -> s.phase() == GamePhase.BUZZ_LOCKED
+                && s.revision() >= hostLocked.revision());
+        assertEquals(hostLocked.revision(), pubLocked.revision());
+        assertEquals(hostLocked.activeClue().buzzedPlayerId(), pubLocked.activeClue().buzzedPlayerId());
+        assertTrue(r1.session.isConnected());
+        assertTrue(r2.session.isConnected());
+
+        hostInbox.disconnect();
+        publicInbox.disconnect();
+        r1.disconnect();
+        r2.disconnect();
     }
 
     @Test
@@ -281,6 +327,43 @@ class RemoteClientSyncTest {
         return new SnapshotInbox(client, session, queue, errors);
     }
 
+    private ReceiptInbox connectReceipt(String roomId, String playerId) throws Exception {
+        List<Transport> transports = List.of(new RestTemplateXhrTransport());
+        WebSocketStompClient client = new WebSocketStompClient(new SockJsClient(transports));
+        MappingJackson2MessageConverter json = new MappingJackson2MessageConverter();
+        json.setObjectMapper(objectMapper);
+        client.setMessageConverter(json);
+
+        BlockingQueue<ActionReceipt> queue = new LinkedBlockingQueue<>();
+        BlockingQueue<Throwable> errors = new LinkedBlockingQueue<>();
+        StompSession session = client.connectAsync(
+                "http://127.0.0.1:" + port + "/ws",
+                new StompSessionHandlerAdapter() {
+                    @Override
+                    public void handleException(StompSession sess, StompCommand command, StompHeaders headers, byte[] payload, Throwable exception) {
+                        errors.offer(exception);
+                    }
+
+                    @Override
+                    public void handleTransportError(StompSession sess, Throwable exception) {
+                        errors.offer(exception);
+                    }
+                }
+        ).get(8, TimeUnit.SECONDS);
+        session.subscribe(GameBroadcaster.playerReceiptDestination(roomId, playerId), new StompFrameHandler() {
+            @Override
+            public Type getPayloadType(StompHeaders headers) {
+                return ActionReceipt.class;
+            }
+
+            @Override
+            public void handleFrame(StompHeaders headers, Object payload) {
+                queue.offer((ActionReceipt) payload);
+            }
+        });
+        return new ReceiptInbox(client, session, queue, errors);
+    }
+
     private static void send(StompSession session, String roomId, GameAction action) {
         StompHeaders headers = new StompHeaders();
         headers.setDestination("/app/room/" + roomId + "/action");
@@ -304,6 +387,22 @@ class RemoteClientSyncTest {
         return snapshot;
     }
 
+    private static ActionReceipt awaitReceipt(ReceiptInbox inbox, Predicate<ActionReceipt> match) throws Exception {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(15);
+        ActionReceipt receipt = inbox.queue.poll(15, TimeUnit.SECONDS);
+        while (receipt != null && !match.test(receipt)) {
+            long remaining = deadline - System.nanoTime();
+            if (remaining <= 0) {
+                receipt = null;
+                break;
+            }
+            receipt = inbox.queue.poll(remaining, TimeUnit.NANOSECONDS);
+        }
+        assertNotNull(receipt, "timed out waiting for action receipt"
+                + (inbox.errors.peek() == null ? "" : "; " + inbox.errors.peek()));
+        return receipt;
+    }
+
     private record Table(String roomId, String hostId, List<String> playerIds, String clueId) {
     }
 
@@ -311,6 +410,20 @@ class RemoteClientSyncTest {
             WebSocketStompClient client,
             StompSession session,
             BlockingQueue<GameSnapshot> queue,
+            BlockingQueue<Throwable> errors
+    ) {
+        void disconnect() {
+            if (session.isConnected()) {
+                session.disconnect();
+            }
+            client.stop();
+        }
+    }
+
+    private record ReceiptInbox(
+            WebSocketStompClient client,
+            StompSession session,
+            BlockingQueue<ActionReceipt> queue,
             BlockingQueue<Throwable> errors
     ) {
         void disconnect() {

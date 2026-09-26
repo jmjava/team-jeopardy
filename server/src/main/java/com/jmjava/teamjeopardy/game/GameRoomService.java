@@ -159,6 +159,7 @@ public class GameRoomService {
             Clue clue = room.findClue(clueId).orElseThrow(() -> notFound("Unknown clue"));
             Category category = room.findCategory(cell.categoryId())
                     .orElseThrow(() -> notFound("Unknown category"));
+            room.clearLockouts();
             room.setActiveClue(new ActiveClue(
                     clue.id(),
                     category.id(),
@@ -206,6 +207,9 @@ public class GameRoomService {
             }
             if (player.teamId() == null) {
                 throw conflict("Join a team before buzzing");
+            }
+            if (room.isLockedOut(playerId)) {
+                throw conflict("You already answered this clue");
             }
             ActiveClue active = room.getActiveClue();
             if (active == null) {
@@ -261,6 +265,7 @@ public class GameRoomService {
                 room.setActiveClue(withResponseVisible(active, true));
                 room.setPhase(GamePhase.ANSWER_REVEALED);
             } else {
+                room.lockOut(active.buzzedPlayerId());
                 room.setActiveClue(new ActiveClue(
                         active.clueId(),
                         active.categoryId(),
@@ -303,6 +308,7 @@ public class GameRoomService {
         return withRoomId(roomId, room -> {
             requireHost(room, hostPlayerId);
             room.setActiveClue(null);
+            room.clearLockouts();
             if (room.allCluesAnswered()) {
                 room.setPhase(GamePhase.FINISHED);
             } else {

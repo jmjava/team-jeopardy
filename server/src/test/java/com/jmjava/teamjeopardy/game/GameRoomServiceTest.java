@@ -90,6 +90,34 @@ class GameRoomServiceTest {
     }
 
     @Test
+    void incorrectPlayerIsLockedOutForTheRestOfTheClue() {
+        var created = service.createRoom("Pat", "Lockout");
+        String roomId = created.snapshot().roomId();
+        String hostId = created.hostPlayerId();
+        var alex = service.joinRoom(created.snapshot().code(), "Alex", "Blue");
+        var sam = service.joinRoom(created.snapshot().code(), "Sam", "Red");
+        service.admitAll(roomId, hostId);
+        service.installBoard(roomId, hostId, demoBoard("c1"));
+        service.startGame(roomId, hostId);
+        service.selectClue(roomId, hostId, "c1");
+        service.openBuzzers(roomId, hostId);
+
+        service.buzz(roomId, alex.playerId());
+        GameSnapshot reopened = service.judge(roomId, hostId, false);
+        assertEquals(GamePhase.CLUE_OPEN, reopened.phase());
+        assertTrue(reopened.lockedOutPlayerIds().contains(alex.playerId()));
+
+        ResponseStatusException locked = assertThrows(
+                ResponseStatusException.class,
+                () -> service.buzz(roomId, alex.playerId())
+        );
+        assertTrue(locked.getReason().contains("already answered"));
+
+        GameSnapshot second = service.buzz(roomId, sam.playerId());
+        assertEquals(sam.playerId(), second.activeClue().buzzedPlayerId());
+    }
+
+    @Test
     void concurrentBuzzHasSingleWinner() throws Exception {
         var created = service.createRoom("Pat", "Race");
         String roomId = created.snapshot().roomId();

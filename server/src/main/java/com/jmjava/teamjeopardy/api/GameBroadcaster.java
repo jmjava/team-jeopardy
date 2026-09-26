@@ -1,5 +1,6 @@
 package com.jmjava.teamjeopardy.api;
 
+import com.jmjava.teamjeopardy.game.ActionReceipt;
 import com.jmjava.teamjeopardy.game.GameRoomService;
 import com.jmjava.teamjeopardy.game.GameSnapshot;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
@@ -27,5 +28,16 @@ public class GameBroadcaster {
         messagingTemplate.convertAndSend("/topic/room." + pub.roomId(), pub);
         messagingTemplate.convertAndSend("/topic/room-code." + pub.code(), pub);
         messagingTemplate.convertAndSend("/topic/room." + host.roomId() + ".host", host);
+    }
+
+    public static String playerReceiptDestination(String roomId, String playerId) {
+        return "/topic/room." + roomId + ".player." + playerId;
+    }
+
+    public void sendReceipt(ActionReceipt receipt) {
+        if (receipt == null || receipt.playerId() == null || receipt.playerId().isBlank()) {
+            return;
+        }
+        messagingTemplate.convertAndSend(playerReceiptDestination(receipt.roomId(), receipt.playerId()), receipt);
     }
 }

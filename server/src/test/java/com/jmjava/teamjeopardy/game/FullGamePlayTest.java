@@ -65,6 +65,8 @@ class FullGamePlayTest {
         assertThrows(ResponseStatusException.class, () -> service.buzz(roomId, hostId));
         buzzAndJudge(alexId, false);
         assertEquals(GamePhase.CLUE_OPEN, phase());
+        assertTrue(service.hostSnapshot(roomId).lockedOutPlayerIds().contains(alexId));
+        assertThrows(ResponseStatusException.class, () -> service.buzz(roomId, alexId));
         buzzAndJudge(samId, true);
         returnBoard();
         assertScores(-200, 200);
