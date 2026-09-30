@@ -57,7 +57,7 @@ function cellLabel(category, clue) {
           v-for="clue in category.clues"
           :key="clue.id"
           class="cell"
-          :class="{ answered: cellMap.get(clue.id)?.answered, dd: clue.dailyDouble }"
+          :class="{ answered: cellMap.get(clue.id)?.answered }"
           :disabled="!isHost || finished || cellMap.get(clue.id)?.answered"
           :aria-label="cellLabel(category, clue)"
           @click="emit('select', clue.id)"
@@ -145,16 +145,6 @@ function cellLabel(category, clue) {
 .cell.answered {
   background: var(--cell-answered);
   color: transparent;
-}
-
-.cell.dd:not(.answered)::after {
-  content: "DD";
-  position: absolute;
-  top: 0.35rem;
-  right: 0.4rem;
-  font-size: 0.65rem;
-  color: #fff;
-  letter-spacing: 0.08em;
 }
 
 @keyframes board-in {

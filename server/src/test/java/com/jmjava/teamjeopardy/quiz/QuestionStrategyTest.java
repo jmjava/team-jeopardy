@@ -86,6 +86,35 @@ class QuestionStrategyTest {
                         || clue.prompt().toLowerCase().contains("repository")
                         || clue.prompt().toLowerCase().contains("risk")
                         || clue.prompt().toLowerCase().contains("matrix")
-                        || clue.prompt().toLowerCase().contains("pattern")));
+                        || clue.prompt().toLowerCase().contains("pattern")
+                        || clue.response().toLowerCase().contains("repository")));
+        assertCluesAreJeopardyStyle(board);
+    }
+
+    @Test
+    void mavenBoardPromptsDoNotLeakAnswers() throws Exception {
+        Path root = Path.of("..", "samples", "sample-reactor").toAbsolutePath().normalize();
+        CodeGraph graph = ingester.ingest(root, ProjectKind.MAVEN);
+        Board board = questions.generate(graph, "Maven coder/QA");
+        assertCluesAreJeopardyStyle(board);
+    }
+
+    private static void assertCluesAreJeopardyStyle(Board board) {
+        for (Category category : board.categories()) {
+            for (Clue clue : category.clues()) {
+                assertFalse(
+                        JeopardyStyle.promptLeaksAnswer(clue.prompt(), clue.response()),
+                        () -> category.title() + " leaks answer in: " + clue.prompt() + " / " + clue.response()
+                );
+                assertFalse(
+                        JeopardyStyle.looksLikeQuestion(clue.prompt()),
+                        () -> category.title() + " prompt looks like a question: " + clue.prompt()
+                );
+                assertTrue(
+                        clue.response().matches("(?i)^(what|who|where|when|which)\\s+(is|are|was|were)\\b.+\\?$"),
+                        () -> "response should be a Jeopardy question: " + clue.response()
+                );
+            }
+        }
     }
 }

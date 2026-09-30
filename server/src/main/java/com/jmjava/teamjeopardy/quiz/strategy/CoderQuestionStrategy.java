@@ -6,6 +6,7 @@ import com.jmjava.teamjeopardy.graph.CodeNode;
 import com.jmjava.teamjeopardy.pattern.PatternFact;
 import com.jmjava.teamjeopardy.quiz.Category;
 import com.jmjava.teamjeopardy.quiz.Clue;
+import com.jmjava.teamjeopardy.quiz.JeopardyStyle;
 import com.jmjava.teamjeopardy.quiz.QuestionPersona;
 import org.springframework.stereotype.Component;
 
@@ -63,17 +64,21 @@ public class CoderQuestionStrategy implements QuestionStrategy {
                 .sorted(Map.Entry.<String, Long>comparingByValue().reversed())
                 .limit(3)
                 .forEach(e -> clues.add(clue(seq,
-                        "Coders will recognize this software pattern matched " + e.getValue()
-                                + " time(s) in the ingest.",
-                        "What is " + e.getKey() + "?",
+                        "Ingest matched this software design pattern " + e.getValue()
+                                + " time(s) across the codebase.",
+                        JeopardyStyle.whatIs(e.getKey()),
                         "Language-scoped PatternStrategy attribute `pattern`.",
                         null)));
         for (PatternFact fact : facts.stream().limit(5).toList()) {
             String pattern = String.valueOf(fact.attributes().getOrDefault("pattern", "pattern"));
-            String lang = fact.language() == null ? "" : " [" + fact.language() + "]";
+            String langBit = fact.language() == null || fact.language().isBlank()
+                    ? ""
+                    : fact.language() + " ";
+            String evidence = JeopardyStyle.redact(fact.text(), pattern);
             clues.add(clue(seq,
-                    fact.text() + lang,
-                    "What is " + pattern + "?",
+                    "A scanner flagged this " + langBit + "pattern from `"
+                            + JeopardyStyle.redact(JeopardyStyle.basename(fact.evidenceFile()), pattern) + "`:\n" + evidence,
+                    JeopardyStyle.whatIs(pattern),
                     "predicate=" + fact.predicate() + " confidence=" + fact.confidence(),
                     fact.evidenceFile()));
         }
@@ -98,9 +103,9 @@ public class CoderQuestionStrategy implements QuestionStrategy {
                 default -> "class";
             };
             clues.add(clue(seq,
-                    "Name this " + kind + " from `" + type.filePath() + "`:\n```\n"
-                            + truncate(type.snippet(), 200) + "\n```",
-                    "What is " + type.name() + "?",
+                    "This " + kind + " lives under `" + JeopardyStyle.pathHint(type.filePath(), type.name()) + "`:\n```\n"
+                            + JeopardyStyle.redact(truncate(type.snippet(), 200), type.name()) + "\n```",
+                    JeopardyStyle.whatIs(type.name()),
                     "Qualified: " + type.qualifiedName(),
                     type.filePath()));
         }
@@ -118,10 +123,11 @@ public class CoderQuestionStrategy implements QuestionStrategy {
                 .toList();
         List<Clue> clues = new ArrayList<>();
         for (CodeNode method : methods) {
+            String signature = JeopardyStyle.redact(method.signature(), method.name());
             clues.add(clue(seq,
-                    "In `" + method.filePath() + "`, this API is declared as `"
-                            + method.signature() + "`.",
-                    "What is " + method.name() + "?",
+                    "In `" + JeopardyStyle.pathHint(method.filePath(), method.name()) + "`, this API is declared as `"
+                            + signature + "`.",
+                    JeopardyStyle.whatIs(method.name()),
                     method.snippet() != null ? truncate(method.snippet(), 160) : method.qualifiedName(),
                     method.filePath()));
         }
@@ -139,7 +145,7 @@ public class CoderQuestionStrategy implements QuestionStrategy {
                         clues.add(clue(seq,
                                 "This source file owns " + e.getValue()
                                         + " import edges — a likely integration seam.",
-                                "What is " + file.qualifiedName() + "?",
+                                JeopardyStyle.whatIs(file.qualifiedName()),
                                 "IMPORTS fan-out from FILE node.",
                                 file.filePath()))));
 
@@ -150,7 +156,7 @@ public class CoderQuestionStrategy implements QuestionStrategy {
                 .limit(4)
                 .forEach(e -> clues.add(clue(seq,
                         "This dependency appears in " + e.getValue() + " import(s).",
-                        "What is " + e.getKey() + "?",
+                        JeopardyStyle.whatIs(e.getKey()),
                         "IMPORT node grouping.",
                         null)));
         return new Category("cat-dev-ownership", "DEV: OWNERSHIP & DEPS", clues);

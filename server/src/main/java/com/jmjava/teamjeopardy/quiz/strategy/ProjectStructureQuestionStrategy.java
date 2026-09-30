@@ -6,6 +6,7 @@ import com.jmjava.teamjeopardy.graph.CodeNode;
 import com.jmjava.teamjeopardy.graph.ProjectKind;
 import com.jmjava.teamjeopardy.quiz.Category;
 import com.jmjava.teamjeopardy.quiz.Clue;
+import com.jmjava.teamjeopardy.quiz.JeopardyStyle;
 import com.jmjava.teamjeopardy.quiz.QuestionPersona;
 import org.springframework.stereotype.Component;
 
@@ -62,12 +63,13 @@ public class ProjectStructureQuestionStrategy implements QuestionStrategy {
         List<Clue> clues = new ArrayList<>();
         String tool = kind == ProjectKind.GRADLE ? "Gradle" : "Maven";
         clues.add(clue(seq,
-                "How many " + tool + " modules did ingest discover?",
-                "What is " + modules.size() + "?",
+                "Ingest recorded this many " + tool + " modules in the graph.",
+                JeopardyStyle.whatIs(String.valueOf(modules.size())),
                 "MODULE node count.", null));
         modules.stream().limit(6).forEach(module -> clues.add(clue(seq,
-                "This " + tool + " module is identified as `" + module.qualifiedName() + "`.",
-                "What is " + module.name() + "?",
+                "This " + tool + " module was parsed from `"
+                        + JeopardyStyle.redact(String.valueOf(module.filePath()), module.name()) + "`.",
+                JeopardyStyle.whatIs(module.name()),
                 module.signature(),
                 module.filePath())));
         return new Category("cat-modules", "MODULE MADNESS", clues);
@@ -81,13 +83,14 @@ public class ProjectStructureQuestionStrategy implements QuestionStrategy {
                 .toList();
         List<Clue> clues = new ArrayList<>();
         clues.add(clue(seq,
-                "Declared " + kind.name().toLowerCase() + " dependency nodes in the graph.",
-                "What is " + deps.size() + "?",
+                "The graph contains this many declared " + kind.name().toLowerCase() + " dependency nodes.",
+                JeopardyStyle.whatIs(String.valueOf(deps.size())),
                 "DEPENDENCY nodes for build tool coordinates.", null));
         deps.stream().limit(6).forEach(dep -> clues.add(clue(seq,
-                "A build dependency coordinate includes `" + dep.qualifiedName() + "`.",
-                "What is " + dep.name() + "?",
-                dep.signature(),
+                "A build file pulls in this coordinate from `"
+                        + JeopardyStyle.basename(dep.filePath()) + "`.",
+                JeopardyStyle.whatIs(dep.name()),
+                dep.signature() == null ? dep.qualifiedName() : dep.signature(),
                 dep.filePath())));
         return new Category("cat-build-deps", "BUILD DEPENDENCIES", clues);
     }
@@ -98,12 +101,12 @@ public class ProjectStructureQuestionStrategy implements QuestionStrategy {
                 .toList();
         List<Clue> clues = new ArrayList<>();
         clues.add(clue(seq,
-                "How many Vue SFC components were indexed?",
-                "What is " + components.size() + "?",
+                "Ingest indexed this many Vue single-file components.",
+                JeopardyStyle.whatIs(String.valueOf(components.size())),
                 "COMPONENT nodes backed by .vue files.", null));
         components.stream().limit(6).forEach(c -> clues.add(clue(seq,
-                "This Vue component path is `" + c.filePath() + "`.",
-                "What is " + c.name() + "?",
+                "This Vue SFC lives under `" + JeopardyStyle.pathHint(c.filePath(), c.name()) + "`.",
+                JeopardyStyle.whatIs(c.name()),
                 c.signature(),
                 c.filePath())));
         return new Category("cat-components", "COMPONENT CATALOG", clues);
@@ -115,12 +118,12 @@ public class ProjectStructureQuestionStrategy implements QuestionStrategy {
                 .toList();
         List<Clue> clues = new ArrayList<>();
         clues.add(clue(seq,
-                "npm dependency nodes discovered from package.json.",
-                "What is " + deps.size() + "?",
+                "package.json contributed this many npm dependency nodes.",
+                JeopardyStyle.whatIs(String.valueOf(deps.size())),
                 "DEPENDENCY nodes with language=npm.", null));
         deps.stream().limit(6).forEach(d -> clues.add(clue(seq,
-                "package.json lists this dependency at version `" + d.snippet() + "`.",
-                "What is " + d.name() + "?",
+                "package.json pins this package at version `" + d.snippet() + "`.",
+                JeopardyStyle.whatIs(d.name()),
                 d.signature(),
                 d.filePath())));
         return new Category("cat-npm", "NPM DEPENDENCIES", clues);
@@ -134,19 +137,19 @@ public class ProjectStructureQuestionStrategy implements QuestionStrategy {
             return new Category("cat-hierarchy", title, clues);
         }
         clues.add(clue(seq,
-                "How many EXTENDS relationships did hierarchy enrichment record?",
-                "What is " + extendsEdges.size() + "?",
+                "Hierarchy enrichment recorded this many EXTENDS relationships.",
+                JeopardyStyle.whatIs(String.valueOf(extendsEdges.size())),
                 "EXTENDS edge count.", null));
         clues.add(clue(seq,
-                "How many IMPLEMENTS relationships were recorded?",
-                "What is " + implementsEdges.size() + "?",
+                "Hierarchy enrichment recorded this many IMPLEMENTS relationships.",
+                JeopardyStyle.whatIs(String.valueOf(implementsEdges.size())),
                 "IMPLEMENTS edge count.", null));
         extendsEdges.stream().limit(4).forEach(edge -> {
             String child = graph.findById(edge.fromId()).map(CodeNode::name).orElse("?");
             String parent = graph.findById(edge.toId()).map(CodeNode::name).orElse("?");
             clues.add(clue(seq,
                     "This type extends `" + parent + "`.",
-                    "What is " + child + "?",
+                    JeopardyStyle.whatIs(child),
                     "EXTENDS edge.",
                     graph.findById(edge.fromId()).map(CodeNode::filePath).orElse(null)));
         });
@@ -160,15 +163,15 @@ public class ProjectStructureQuestionStrategy implements QuestionStrategy {
             return new Category("cat-vue-hierarchy", "COMPONENT TREE", clues);
         }
         clues.add(clue(seq,
-                "How many parent→child Vue USES edges were enriched?",
-                "What is " + uses.size() + "?",
+                "Component-tree enrichment recorded this many parent→child Vue USES edges.",
+                JeopardyStyle.whatIs(String.valueOf(uses.size())),
                 "USES edge count.", null));
         uses.stream().limit(5).forEach(edge -> {
             String parent = graph.findById(edge.fromId()).map(CodeNode::name).orElse("?");
             String child = graph.findById(edge.toId()).map(CodeNode::name).orElse("?");
             clues.add(clue(seq,
-                    "`" + parent + "`'s template uses this child component.",
-                    "What is " + child + "?",
+                    "`" + parent + "`'s template renders this child component.",
+                    JeopardyStyle.whatIs(child),
                     "Vue USES edge.",
                     graph.findById(edge.fromId()).map(CodeNode::filePath).orElse(null)));
         });

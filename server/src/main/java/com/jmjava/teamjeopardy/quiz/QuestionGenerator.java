@@ -231,7 +231,7 @@ public class QuestionGenerator {
                     c.id(),
                     VALUES[i],
                     c.prompt(),
-                    c.response(),
+                    JeopardyStyle.whatIs(c.response()),
                     c.explanation(),
                     c.sourcePath(),
                     i == 3 && source.size() >= 4
