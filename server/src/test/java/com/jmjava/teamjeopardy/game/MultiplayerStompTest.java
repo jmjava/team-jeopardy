@@ -117,6 +117,48 @@ class MultiplayerStompTest {
         displayInbox.disconnect();
     }
 
+    @Test
+    void rejectedBuzzPublishesActionErrorWithoutDroppingSession() throws Exception {
+        JsonNode created = post("/api/rooms", Map.of("hostName", "Pat Host", "title", "Error Table"));
+        String roomId = created.path("snapshot").path("roomId").asText();
+        String code = created.path("snapshot").path("code").asText();
+        String hostId = created.path("hostPlayerId").asText();
+
+        JsonNode p1 = post("/api/rooms/join", Map.of("code", code, "displayName", "Alex", "teamName", "Blue Owls"));
+        String p1Id = p1.path("playerId").asText();
+
+        SnapshotInbox hostInbox = connect("/topic/room." + roomId + ".host");
+        ErrorInbox errors = connectErrors("/topic/room." + roomId + ".errors");
+        Thread.sleep(250);
+
+        post("/api/rooms/ingest", Map.of(
+                "roomId", roomId,
+                "playerId", hostId,
+                "useSample", true,
+                "sampleType", "maven",
+                "boardTitle", "Error Maven"
+        ));
+        await(hostInbox, s -> s.board() != null && s.board().categories() != null && !s.board().categories().isEmpty());
+        send(hostInbox.session, roomId, new GameAction("ADMIT_ALL", hostId, null, Map.of()));
+        await(hostInbox, s -> s.players().stream().anyMatch(p -> !p.host() && p.admitted()));
+        send(hostInbox.session, roomId, new GameAction("START", hostId, null, Map.of()));
+        GameSnapshot board = await(hostInbox, s -> s.phase() == GamePhase.BOARD);
+        String clueId = firstOpenClueId(board);
+        send(hostInbox.session, roomId, new GameAction("SELECT_CLUE", hostId, null, Map.of("clueId", clueId)));
+        await(hostInbox, s -> s.phase() == GamePhase.HOST_PREVIEW);
+
+        send(hostInbox.session, roomId, new GameAction("BUZZ", p1Id, null, Map.of()));
+        Map<?, ?> rejected = errors.queue.poll(8, TimeUnit.SECONDS);
+        assertNotNull(rejected, "expected a STOMP action error");
+        assertEquals(p1Id, String.valueOf(rejected.get("playerId")));
+        assertEquals("BUZZ", String.valueOf(rejected.get("type")));
+        assertTrue(String.valueOf(rejected.get("message")).toLowerCase().contains("buzz"));
+        assertTrue(hostInbox.session.isConnected());
+
+        hostInbox.disconnect();
+        errors.disconnect();
+    }
+
     private JsonNode post(String path, Map<String, ?> body) throws Exception {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
@@ -166,6 +208,35 @@ class MultiplayerStompTest {
         return new SnapshotInbox(client, session, queue, errors);
     }
 
+    private ErrorInbox connectErrors(String destination) throws Exception {
+        List<Transport> transports = List.of(new RestTemplateXhrTransport());
+        WebSocketStompClient client = new WebSocketStompClient(new SockJsClient(transports));
+        MappingJackson2MessageConverter json = new MappingJackson2MessageConverter();
+        json.setObjectMapper(objectMapper);
+        client.setMessageConverter(json);
+
+        BlockingQueue<Map<?, ?>> queue = new LinkedBlockingQueue<>();
+        StompSession session = client.connectAsync(
+                "http://127.0.0.1:" + port + "/ws",
+                new StompSessionHandlerAdapter() {
+                }
+        ).get(8, TimeUnit.SECONDS);
+        session.subscribe(destination, new StompFrameHandler() {
+            @Override
+            public Type getPayloadType(StompHeaders headers) {
+                return Map.class;
+            }
+
+            @Override
+            public void handleFrame(StompHeaders headers, Object payload) {
+                if (payload instanceof Map<?, ?> map) {
+                    queue.offer(map);
+                }
+            }
+        });
+        return new ErrorInbox(client, session, queue);
+    }
+
     private static void send(StompSession session, String roomId, GameAction action) {
         StompHeaders headers = new StompHeaders();
         headers.setDestination("/app/room/" + roomId + "/action");
@@ -210,6 +281,19 @@ class MultiplayerStompTest {
             StompSession session,
             BlockingQueue<GameSnapshot> queue,
             BlockingQueue<Throwable> errors
+    ) {
+        void disconnect() {
+            if (session.isConnected()) {
+                session.disconnect();
+            }
+            client.stop();
+        }
+    }
+
+    private record ErrorInbox(
+            WebSocketStompClient client,
+            StompSession session,
+            BlockingQueue<Map<?, ?>> queue
     ) {
         void disconnect() {
             if (session.isConnected()) {

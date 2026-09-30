@@ -23,6 +23,13 @@ const cellMap = computed(() => {
 })
 
 const categories = computed(() => props.board?.categories || [])
+
+function cellLabel(category, clue) {
+  const answered = cellMap.value.get(clue.id)?.answered
+  const dd = clue.dailyDouble ? ', Daily Double' : ''
+  if (answered) return `${category.title} $${clue.value}, answered`
+  return `${category.title} $${clue.value}${dd}`
+}
 </script>
 
 <template>
@@ -33,8 +40,11 @@ const categories = computed(() => props.board?.categories || [])
       <p v-if="finished" class="done">Game finished</p>
     </div>
 
+    <div class="board-scroller">
     <div
       class="board"
+      role="grid"
+      :aria-label="board?.title || 'Jeopardy board'"
       :style="{ '--cols': Math.max(categories.length, 1) }"
     >
       <div
@@ -42,18 +52,20 @@ const categories = computed(() => props.board?.categories || [])
         :key="category.id"
         class="category"
       >
-        <div class="cat-title">{{ category.title }}</div>
+        <div class="cat-title" role="columnheader">{{ category.title }}</div>
         <button
           v-for="clue in category.clues"
           :key="clue.id"
           class="cell"
           :class="{ answered: cellMap.get(clue.id)?.answered, dd: clue.dailyDouble }"
           :disabled="!isHost || finished || cellMap.get(clue.id)?.answered"
+          :aria-label="cellLabel(category, clue)"
           @click="emit('select', clue.id)"
         >
           <span v-if="!cellMap.get(clue.id)?.answered">${{ clue.value }}</span>
         </button>
       </div>
+    </div>
     </div>
   </section>
 </template>
@@ -61,6 +73,11 @@ const categories = computed(() => props.board?.categories || [])
 <style scoped>
 .board-wrap {
   animation: board-in 420ms ease both;
+}
+
+.board-scroller {
+  overflow-x: auto;
+  padding-bottom: 0.25rem;
 }
 
 .heading {
@@ -89,8 +106,8 @@ const categories = computed(() => props.board?.categories || [])
 
 .cat-title,
 .cell {
-  background: linear-gradient(180deg, #1a6ae0, var(--board));
-  border: 3px solid #071833;
+  background: linear-gradient(180deg, var(--board-cell), var(--board));
+  border: 3px solid var(--board-border);
   box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.08), var(--shadow);
   min-height: 5rem;
   display: grid;
@@ -126,7 +143,7 @@ const categories = computed(() => props.board?.categories || [])
 }
 
 .cell.answered {
-  background: #0a274f;
+  background: var(--cell-answered);
   color: transparent;
 }
 
@@ -153,7 +170,7 @@ const categories = computed(() => props.board?.categories || [])
 
 @media (max-width: 900px) {
   .board {
-    grid-template-columns: 1fr;
+    min-width: calc(var(--cols) * 7.5rem);
   }
 }
 </style>

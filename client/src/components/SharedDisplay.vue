@@ -1,5 +1,6 @@
 <script setup>
 import { computed } from 'vue'
+import { appName } from '../theme'
 import Scorebar from './Scorebar.vue'
 import BoardView from './BoardView.vue'
 import ClueStage from './ClueStage.vue'
@@ -23,7 +24,7 @@ const showClue = computed(() =>
     <header class="display-top">
       <div>
         <p class="kicker">Shared screen</p>
-        <h1>{{ snapshot?.title || 'Team Jeopardy' }}</h1>
+        <h1>{{ snapshot?.title || appName }}</h1>
       </div>
       <div class="code" v-if="snapshot?.code">
         <span class="muted">Room</span>
