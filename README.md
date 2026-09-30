@@ -63,6 +63,81 @@ export OPENAI_API_KEY=sk-...
 
 Without a key, ingest and boards still work end-to-end offline.
 
+### White-label (build-time)
+
+Optional Vite env in `client/.env` (see `client/.env.example`):
+
+```bash
+VITE_APP_NAME="Code Quiz Night"
+VITE_LOGO_URL=/logo.svg
+VITE_ACCENT_COLOR=#38bdf8
+VITE_BOARD_COLOR=#1e3a5f
+VITE_BACKGROUND_COLOR=#0a1628
+```
+
+Rebuild the client after changing these. Full checklist: [`docs/white-label.md`](docs/white-label.md).
+
+## JIRA release boards (SPEC / REL)
+
+Host picks **one release** (`fixVersion`) and **one or more JIRA projects**. The server
+builds a playable 5–6 category board from issue fields (summary, description,
+acceptance/spec, epic, component, type). This path does **not** go through the
+coder/QA code-graph balancer.
+
+| Setting | Env / config | Purpose |
+|---------|--------------|---------|
+| Base URL | `JIRA_BASE_URL` / `team-jeopardy.jira.base-url` | Cloud or Server/DC host. Empty in git. |
+| Email | `JIRA_EMAIL` / `team-jeopardy.jira.email` | Atlassian account email (Cloud) or username |
+| API token | `JIRA_API_TOKEN` / `team-jeopardy.jira.api-token` | Read-only token. **Never commit.** |
+| OpenAI (optional) | `OPENAI_API_KEY` + `team-jeopardy.openai.enabled` | Existing enricher polishes prompts only |
+
+```bash
+export JIRA_BASE_URL=https://your-site.atlassian.net
+export JIRA_EMAIL=you@example.com
+export JIRA_API_TOKEN=...          # not in git
+# optional polish — same enricher as code boards; answers stay fixed
+export OPENAI_API_KEY=sk-...
+# TEAM_JEOPARDY_OPENAI_ENABLED=true
+```
+
+Live import is **read-only JQL search**. The app does not scrape the JIRA UI and
+never writes issues. The JIRA token is never sent to OpenAI (clues already carry
+sanitized summary/AC text only). CI and local play work **without** credentials:
+
+```bash
+curl -s -X POST http://localhost:8080/api/rooms/ingest-jira \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "roomId":"ROOM_ID",
+    "playerId":"HOST_ID",
+    "projects":["PROJ"],
+    "release":"2.4.0",
+    "useFixture": true,
+    "fixture": "one-project",
+    "boardTitle":"Storefront 2.4.0"
+  }'
+```
+
+Sanitized fixtures (host `https://jira.example`, keys like `PROJ-1` / `SHOP-2`):
+
+- `samples/jira-release-one-project.json` — fat single project, split by epic
+- `samples/jira-release-multi-project.json` — similar-size projects, one column each
+
+`GET /api/health` lists `jira` in `supported`. `jira.configured` is true only when
+the three env vars are set; the health payload does not echo the host or token.
+
+`sourceKind` for the question bank is `jira`.
+
+## Leftover: typed Final + Daily Double wager (T16)
+
+Daily Double on `main` is a **badge** (`clue.dailyDouble`) on a normal buzz
+clue. A `FINAL` game phase exists in the enum but is unused. Players do not
+type a wager, and there is no write-in Final Jeopardy yet.
+
+That leftover is T16: typed Daily Double wager before the clue is shown, and
+typed Final (category → locked wagers → clue → typed answers → host marks).
+OpenAI is not required. This section is not shipped gameplay.
+
 ## Question bank (SQLite)
 
 Guide-generated boards are auto-saved to a local SQLite file so moderators can reuse
@@ -105,6 +180,17 @@ cd client && npm install && npm run dev
 ```
 
 Open http://localhost:5173 — create a room, ingest Maven / Gradle / Vue / Python sample, start game.
+
+Share the **room code** or a player link (`/?code=ABC123`). Refresh keeps your seat (session storage) until the server restarts — rooms are in-memory. The shared display is `/?view=display&room=…&code=…`.
+
+### Keyboard
+
+| Who | Keys |
+|-----|------|
+| Player | **Space** buzzes when buzzers are open |
+| Host | **Enter** / **O** open buzzers · **C** / **Y** correct · **X** / **N** incorrect · **R** reveal · **Esc** / **B** back to board |
+
+Host shortcuts ignore typing in inputs. Lost buzz races stay on the STOMP session; the acting player sees the rejection inline.
 
 ### Custom path
 
@@ -149,7 +235,7 @@ node scripts/simulate-multiplayer-game.mjs
 | Doc | Description |
 |-----|-------------|
 | [`docs/figma.md`](docs/figma.md) | Import SVG diagrams into Figma Free; UI flow, wireframes, design tokens |
-| [`docs/white-label.md`](docs/white-label.md) | Logo + color scheme white-label planning and implementation checklist |
+| [`docs/white-label.md`](docs/white-label.md) | Logo + color scheme white-label (build-time Vite env is implemented) |
 
 Diagram source files: [`design/figma/`](design/figma/).
 
@@ -158,7 +244,7 @@ Diagram source files: [`design/figma/`](design/figma/).
 ```text
 client/     Vue 3 + STOMP multiplayer UI
 server/     Spring Boot game + ingest/pattern/question strategies
-samples/    sample-reactor, sample-gradle, sample-vue, sample-python
+samples/    sample-reactor, sample-gradle, sample-vue, sample-python, sanitized JIRA fixtures
 design/     Figma-importable SVG UI diagrams
 docs/       Figma and white-label documentation
 NOTICE      attribution for skgraph-derived Maven/OSGi ports

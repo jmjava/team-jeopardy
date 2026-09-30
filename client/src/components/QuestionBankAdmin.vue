@@ -518,6 +518,7 @@ onMounted(refresh)
             <option value="sample">sample</option>
             <option value="github">github</option>
             <option value="pulls">pulls</option>
+            <option value="jira">jira</option>
             <option value="path">path</option>
           </select>
         </label>

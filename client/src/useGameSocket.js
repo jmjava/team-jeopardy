@@ -4,9 +4,23 @@ import SockJS from 'sockjs-client'
 const WS_URL = import.meta.env.VITE_WS_URL || '/ws'
 
 /**
- * @param {{ roomId: string, isHost?: boolean, onSnapshot: Function, onStatus?: Function }} opts
+ * @param {{
+ *   roomId: string,
+ *   playerId?: string,
+ *   isHost?: boolean,
+ *   onSnapshot: Function,
+ *   onStatus?: Function,
+ *   onError?: Function
+ * }} opts
  */
-export function connectGameSocket({ roomId, isHost = false, onSnapshot, onStatus }) {
+export function connectGameSocket({
+  roomId,
+  playerId,
+  isHost = false,
+  onSnapshot,
+  onStatus,
+  onError
+}) {
   const client = new Client({
     webSocketFactory: () => new SockJS(WS_URL),
     reconnectDelay: 2000,
@@ -32,6 +46,15 @@ export function connectGameSocket({ roomId, isHost = false, onSnapshot, onStatus
           }
         })
       }
+      client.subscribe(`/topic/room.${roomId}.errors`, (message) => {
+        try {
+          const body = JSON.parse(message.body)
+          if (!playerId || body.playerId !== playerId) return
+          onError?.(body)
+        } catch (err) {
+          console.error('Failed to parse action error', err)
+        }
+      })
     },
     onDisconnect: () => onStatus?.('disconnected'),
     onStompError: () => onStatus?.('error'),

@@ -4,13 +4,18 @@ import {
   browseGithub,
   createRoom,
   getHealth,
+  getRoom,
   ingestBoard,
+  ingestJiraBoard,
   joinRoom,
   loadSavedBoard,
   postAction
 } from './api'
 import { connectGameSocket } from './useGameSocket'
 import { getGameSfx, sfxEventForTransition } from './useGameSfx'
+import { appName } from './theme'
+import { clearSession, copyText, loadSession, playerJoinUrl, saveSession } from './session'
+import BrandHeader from './components/BrandHeader.vue'
 import LobbyView from './components/LobbyView.vue'
 import ModeratorConsole from './components/ModeratorConsole.vue'
 import QuestionBankAdmin from './components/QuestionBankAdmin.vue'
@@ -40,7 +45,9 @@ const session = reactive({
 const snapshot = ref(null)
 const socketStatus = ref('idle')
 const error = ref('')
+const copied = ref('')
 const busy = ref(false)
+const restoring = ref(false)
 const ingestSummary = ref(null)
 const health = ref(null)
 const defaultRepo = ref('jmjava/team-jeopardy')
@@ -48,6 +55,7 @@ let socket = null
 const sfx = getGameSfx()
 let prevSfxPhase = ''
 let detachSfxUnlock
+let copiedTimer = 0
 
 const phase = computed(() => snapshot.value?.phase || 'LOBBY')
 const me = computed(() =>
@@ -77,6 +85,11 @@ const displayUrl = computed(() => {
   url.searchParams.set('code', session.code)
   return url.toString()
 })
+const joinUrl = computed(() => playerJoinUrl(session.code, window.location.href))
+const inviteCode = computed(() => (params.get('code') || '').trim().toUpperCase())
+const reconnecting = computed(
+  () => !!session.roomId && ['disconnected', 'error'].includes(socketStatus.value)
+)
 
 async function refreshHealth() {
   try {
@@ -90,10 +103,16 @@ async function refreshHealth() {
 }
 refreshHealth()
 
+function persistSeat() {
+  if (viewMode.value !== 'app') return
+  saveSession(session)
+}
+
 function bindSocket(roomId, isHost) {
   socket?.disconnect()
   socket = connectGameSocket({
     roomId,
+    playerId: session.playerId,
     isHost,
     onSnapshot: (next) => {
       const incoming = next?.revision
@@ -108,11 +127,28 @@ function bindSocket(roomId, isHost) {
       snapshot.value = next
       const self = (next.players || []).find((p) => p.id === session.playerId)
       session.admitted = !!self?.admitted || session.isHost
+      persistSeat()
     },
     onStatus: (status) => {
       socketStatus.value = status
+    },
+    onError: (body) => {
+      if (body?.message) error.value = body.message
     }
   })
+}
+
+function applySeat(result, { isHost, displayName, hostName }) {
+  session.roomId = result.snapshot.roomId
+  session.code = result.snapshot.code
+  session.playerId = result.hostPlayerId || result.playerId
+  session.hostName = hostName || result.hostName || ''
+  session.displayName = displayName || session.hostName
+  session.isHost = isHost
+  session.admitted = isHost
+  snapshot.value = result.snapshot
+  bindSocket(session.roomId, session.isHost)
+  persistSeat()
 }
 
 async function onCreate(form) {
@@ -123,15 +159,11 @@ async function onCreate(form) {
       hostName: form.hostName,
       title: form.title
     })
-    session.roomId = result.snapshot.roomId
-    session.code = result.snapshot.code
-    session.playerId = result.hostPlayerId
-    session.hostName = result.hostName
-    session.displayName = result.hostName
-    session.isHost = true
-    session.admitted = true
-    snapshot.value = result.snapshot
-    bindSocket(session.roomId, true)
+    applySeat(result, {
+      isHost: true,
+      displayName: result.hostName,
+      hostName: result.hostName
+    })
   } catch (err) {
     error.value = err.message
   } finally {
@@ -148,14 +180,10 @@ async function onJoin(form) {
       displayName: form.displayName,
       teamName: form.teamName
     })
-    session.roomId = result.snapshot.roomId
-    session.code = result.snapshot.code
-    session.playerId = result.playerId
-    session.displayName = form.displayName
-    session.isHost = result.snapshot.hostPlayerId === result.playerId
-    session.admitted = false
-    snapshot.value = result.snapshot
-    bindSocket(session.roomId, session.isHost)
+    applySeat(result, {
+      isHost: result.snapshot.hostPlayerId === result.playerId,
+      displayName: form.displayName
+    })
   } catch (err) {
     error.value = err.message
   } finally {
@@ -196,7 +224,7 @@ async function onIngest(payload = {}) {
       playerId: session.playerId,
       useSample: true,
       sampleType,
-      boardTitle: snapshot.value?.title || `${sampleType} Team Jeopardy`,
+      boardTitle: snapshot.value?.title || `${sampleType} ${appName}`,
       questionHints,
       questionFocuses
     })
@@ -246,6 +274,31 @@ async function onIngestPulls(payload) {
       sampleType: 'pulls',
       repo: payload.repo,
       boardTitle: snapshot.value?.title || `PRs: ${payload.repo}`,
+      questionHints: payload.questionHints,
+      questionFocuses: payload.questionFocuses
+    })
+    snapshot.value = result.snapshot
+    ingestSummary.value = result.ingestSummary
+  } catch (err) {
+    error.value = err.message
+  } finally {
+    busy.value = false
+  }
+}
+
+async function onIngestJira(payload) {
+  error.value = ''
+  busy.value = true
+  try {
+    const result = await ingestJiraBoard({
+      roomId: session.roomId,
+      playerId: session.playerId,
+      projects: payload.projects || [],
+      release: payload.release,
+      jql: payload.jql,
+      useFixture: payload.useFixture !== false,
+      fixture: payload.fixture,
+      boardTitle: snapshot.value?.title || `JIRA: ${payload.release || 'release'}`,
       questionHints: payload.questionHints,
       questionFocuses: payload.questionFocuses
     })
@@ -310,13 +363,83 @@ function openDisplay() {
   }
 }
 
-// Display mode can attach to an existing room via query params
+async function flashCopied(label) {
+  copied.value = label
+  window.clearTimeout(copiedTimer)
+  copiedTimer = window.setTimeout(() => {
+    copied.value = ''
+  }, 3200)
+}
+
+async function copyValue(text, label) {
+  if (!text) return
+  flashCopied(label)
+  const ok = await copyText(text)
+  if (!ok) {
+    error.value = 'Could not copy to clipboard — select the room code and copy it manually'
+  }
+}
+
+function copyCode() {
+  return copyValue(session.code, 'Room code copied')
+}
+
+function copyJoinLink() {
+  return copyValue(joinUrl.value, 'Player link copied')
+}
+
+function copyDisplayLink() {
+  return copyValue(displayUrl.value, 'Display link copied')
+}
+
+function leaveRoom() {
+  socket?.disconnect()
+  socket = null
+  clearSession()
+  session.roomId = ''
+  session.code = ''
+  session.playerId = ''
+  session.hostName = ''
+  session.displayName = ''
+  session.isHost = false
+  session.admitted = false
+  snapshot.value = null
+  ingestSummary.value = null
+  socketStatus.value = 'idle'
+  error.value = ''
+}
+
+async function restoreSeat() {
+  if (viewMode.value !== 'app') return
+  const saved = loadSession()
+  if (!saved) return
+  restoring.value = true
+  try {
+    const snap = await getRoom(saved.roomId, saved.playerId)
+    session.roomId = snap.roomId
+    session.code = snap.code || saved.code
+    session.playerId = saved.playerId
+    session.hostName = saved.hostName
+    session.displayName = saved.displayName
+    session.isHost = saved.isHost || snap.hostPlayerId === saved.playerId
+    snapshot.value = snap
+    const self = (snap.players || []).find((p) => p.id === session.playerId)
+    session.admitted = !!self?.admitted || session.isHost
+    bindSocket(session.roomId, session.isHost)
+    persistSeat()
+  } catch {
+    clearSession()
+  } finally {
+    restoring.value = false
+  }
+}
+
 async function bootDisplay() {
   const room = params.get('room')
   const code = params.get('code')
   if (!room && !code) return
   try {
-    const { getRoom, getRoomByCode } = await import('./api')
+    const { getRoomByCode } = await import('./api')
     const snap = room ? await getRoom(room) : await getRoomByCode(code)
     session.roomId = snap.roomId
     session.code = snap.code
@@ -329,8 +452,46 @@ async function bootDisplay() {
   }
 }
 
+function typingInField(target) {
+  return !!target?.closest?.('input, textarea, select, [contenteditable="true"]')
+}
+
+function onHostKey(e) {
+  if (!session.isHost || viewMode.value !== 'app') return
+  if (typingInField(e.target)) return
+  if (e.repeat) return
+  const key = e.key
+  if (phase.value === 'HOST_PREVIEW' && (key === 'Enter' || key === 'o' || key === 'O')) {
+    e.preventDefault()
+    runAction('OPEN_BUZZERS')
+    return
+  }
+  if (phase.value === 'BUZZ_LOCKED' && (key === 'c' || key === 'C' || key === 'y' || key === 'Y')) {
+    e.preventDefault()
+    runAction('JUDGE', { correct: true })
+    return
+  }
+  if (phase.value === 'BUZZ_LOCKED' && (key === 'x' || key === 'X' || key === 'n' || key === 'N')) {
+    e.preventDefault()
+    runAction('JUDGE', { correct: false })
+    return
+  }
+  if (phase.value !== 'ANSWER_REVEALED' && phase.value !== 'BOARD' && phase.value !== 'LOBBY' && phase.value !== 'FINISHED'
+      && (key === 'r' || key === 'R')) {
+    e.preventDefault()
+    runAction('REVEAL')
+    return
+  }
+  if (phase.value === 'ANSWER_REVEALED' && (key === 'Escape' || key === 'b' || key === 'B')) {
+    e.preventDefault()
+    runAction('RETURN_BOARD')
+  }
+}
+
 if (viewMode.value === 'display') {
   bootDisplay()
+} else if (viewMode.value === 'app') {
+  restoreSeat()
 }
 
 watch(
@@ -357,9 +518,12 @@ watch(
 
 onMounted(() => {
   detachSfxUnlock = sfx.attachUnlock()
+  window.addEventListener('keydown', onHostKey)
 })
 
 onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onHostKey)
+  window.clearTimeout(copiedTimer)
   socket?.disconnect()
   detachSfxUnlock?.()
 })
@@ -369,21 +533,19 @@ onBeforeUnmount(() => {
   <SharedDisplay v-if="viewMode === 'display'" :snapshot="snapshot" />
 
   <div v-else-if="viewMode === 'admin'" class="shell">
+    <a class="skip-link" href="#main">Skip to content</a>
     <header class="top">
-      <div>
-        <p class="eyebrow">SQLite · question bank</p>
-        <h1 class="brand">Team Jeopardy</h1>
-      </div>
+      <BrandHeader eyebrow="SQLite · question bank" compact />
     </header>
-    <QuestionBankAdmin @back="leaveAdmin" />
+    <main id="main">
+      <QuestionBankAdmin @back="leaveAdmin" />
+    </main>
   </div>
 
   <div v-else class="shell">
+    <a class="skip-link" href="#main">Skip to content</a>
     <header class="top">
-      <div>
-        <p class="eyebrow">Moderator · lobby · live buzzers</p>
-        <h1 class="brand">Team Jeopardy</h1>
-      </div>
+      <BrandHeader eyebrow="Moderator · lobby · live buzzers" />
       <div class="meta" v-if="session.code">
         <div>
           <span class="muted">Room</span>
@@ -397,95 +559,115 @@ onBeforeUnmount(() => {
           <span class="muted">Sync</span>
           <strong :class="socketStatus">{{ socketStatus }}</strong>
         </div>
+        <div class="meta-actions">
+          <button type="button" class="secondary slim" @click="copyCode">Copy code</button>
+          <button type="button" class="secondary slim" @click="leaveRoom">Leave</button>
+        </div>
       </div>
     </header>
 
-    <p v-if="error" class="error">{{ error }}</p>
+    <p v-if="reconnecting" class="banner reconnect" role="status">
+      Realtime sync dropped — reconnecting…
+    </p>
+    <p v-if="copied" class="banner copied" role="status">{{ copied }}</p>
+    <p v-if="error" class="error" role="alert">
+      <span>{{ error }}</span>
+      <button type="button" class="secondary slim" @click="error = ''">Dismiss</button>
+    </p>
+    <p v-if="restoring" class="muted restore">Restoring your seat…</p>
 
-    <LobbyView
-      v-if="!session.roomId"
-      :busy="busy"
-      :health="health"
-      @create="onCreate"
-      @join="onJoin"
-      @open-admin="openQuestionBankAdmin"
-    />
-
-    <template v-else>
-      <Scorebar
-        v-if="admitted && phase !== 'LOBBY'"
-        :teams="snapshot?.teams || []"
-        :phase="phase"
-        :buzzed-team-id="snapshot?.activeClue?.buzzedTeamId"
-      />
-
-      <ModeratorConsole
-        v-if="session.isHost && phase === 'LOBBY'"
-        :snapshot="snapshot"
+    <main id="main">
+      <LobbyView
+        v-if="!session.roomId && !restoring"
         :busy="busy"
-        :ingest-summary="ingestSummary"
-        :display-url="displayUrl"
-        :default-repo="defaultRepo"
-        @ingest="onIngest"
-        @ingest-github="onIngestGithub"
-        @ingest-pulls="onIngestPulls"
-        @browse-github="onBrowseGithub"
-        @load-saved="onLoadSavedBoard"
+        :health="health"
+        :initial-code="inviteCode"
+        @create="onCreate"
+        @join="onJoin"
         @open-admin="openQuestionBankAdmin"
-        @admit="(playerId) => runAction('ADMIT_PLAYER', { playerId })"
-        @admit-all="runAction('ADMIT_ALL')"
-        @start="runAction('START')"
-        @open-display="openDisplay"
       />
 
-      <WaitingRoom
-        v-else-if="!admitted"
-        :code="session.code"
-        :display-name="session.displayName"
-        :team-name="myTeamName"
-        :phase="phase"
-      />
+      <template v-else-if="session.roomId">
+        <Scorebar
+          v-if="admitted && phase !== 'LOBBY'"
+          :teams="snapshot?.teams || []"
+          :phase="phase"
+          :buzzed-team-id="snapshot?.activeClue?.buzzedTeamId"
+        />
 
-      <section v-else-if="admitted && phase === 'LOBBY'" class="waiting-start">
-        <p class="kicker">You're in</p>
-        <h2>Waiting for kickoff</h2>
-        <p class="muted">
-          The moderator admitted you
-          <template v-if="myTeamName"> on <strong>{{ myTeamName }}</strong></template>.
-          Hang tight until the game starts.
-        </p>
-      </section>
+        <ModeratorConsole
+          v-if="session.isHost && phase === 'LOBBY'"
+          :snapshot="snapshot"
+          :busy="busy"
+          :ingest-summary="ingestSummary"
+          :display-url="displayUrl"
+          :join-url="joinUrl"
+          :default-repo="defaultRepo"
+          @ingest="onIngest"
+          @ingest-github="onIngestGithub"
+          @ingest-pulls="onIngestPulls"
+          @ingest-jira="onIngestJira"
+          @browse-github="onBrowseGithub"
+          @load-saved="onLoadSavedBoard"
+          @open-admin="openQuestionBankAdmin"
+          @admit="(playerId) => runAction('ADMIT_PLAYER', { playerId })"
+          @admit-all="runAction('ADMIT_ALL')"
+          @start="runAction('START')"
+          @open-display="openDisplay"
+          @copy-code="copyCode"
+          @copy-join="copyJoinLink"
+          @copy-display="copyDisplayLink"
+        />
 
-      <BoardView
-        v-else-if="showBoard"
-        :board="snapshot?.board"
-        :cells="snapshot?.cells || []"
-        :is-host="session.isHost"
-        :finished="phase === 'FINISHED'"
-        @select="(clueId) => runAction('SELECT_CLUE', { clueId })"
-      />
+        <WaitingRoom
+          v-else-if="!admitted"
+          :code="session.code"
+          :display-name="session.displayName"
+          :team-name="myTeamName"
+          :phase="phase"
+        />
 
-      <HostCluePreview
-        v-else-if="showHostPreview"
-        :clue="snapshot?.activeClue"
-        @open="runAction('OPEN_BUZZERS')"
-        @reveal="runAction('REVEAL')"
-        @back="runAction('RETURN_BOARD')"
-      />
+        <section v-else-if="admitted && phase === 'LOBBY'" class="waiting-start">
+          <p class="kicker">You're in</p>
+          <h2>Waiting for kickoff</h2>
+          <p class="muted">
+            The moderator admitted you
+            <template v-if="myTeamName"> on <strong>{{ myTeamName }}</strong></template>.
+            Hang tight until the game starts.
+          </p>
+        </section>
 
-      <ClueStage
-        v-else-if="showClue"
-        :clue="snapshot?.activeClue"
-        :phase="phase"
-        :is-host="session.isHost"
-        :can-buzz="admitted && !session.isHost"
-        @buzz="runAction('BUZZ')"
-        @judge="(correct) => runAction('JUDGE', { correct })"
-        @reveal="runAction('REVEAL')"
-        @back="runAction('RETURN_BOARD')"
-        @open="runAction('OPEN_BUZZERS')"
-      />
-    </template>
+        <BoardView
+          v-else-if="showBoard"
+          :board="snapshot?.board"
+          :cells="snapshot?.cells || []"
+          :is-host="session.isHost"
+          :finished="phase === 'FINISHED'"
+          @select="(clueId) => runAction('SELECT_CLUE', { clueId })"
+        />
+
+        <HostCluePreview
+          v-else-if="showHostPreview"
+          :clue="snapshot?.activeClue"
+          @open="runAction('OPEN_BUZZERS')"
+          @reveal="runAction('REVEAL')"
+          @back="runAction('RETURN_BOARD')"
+        />
+
+        <ClueStage
+          v-else-if="showClue"
+          :clue="snapshot?.activeClue"
+          :phase="phase"
+          :is-host="session.isHost"
+          :can-buzz="admitted && !session.isHost"
+          @buzz="runAction('BUZZ')"
+          @judge="(correct) => runAction('JUDGE', { correct })"
+          @reveal="runAction('REVEAL')"
+          @back="runAction('RETURN_BOARD')"
+          @open="runAction('OPEN_BUZZERS')"
+        />
+      </template>
+    </main>
   </div>
 </template>
 
@@ -504,19 +686,6 @@ onBeforeUnmount(() => {
   margin-bottom: 1.35rem;
 }
 
-.eyebrow {
-  margin: 0 0 0.2rem;
-  text-transform: uppercase;
-  letter-spacing: 0.18em;
-  font-size: 0.72rem;
-  color: var(--gold);
-}
-
-.brand {
-  font-size: clamp(2.6rem, 7vw, 4.4rem);
-  line-height: 0.9;
-}
-
 .meta {
   display: flex;
   gap: 1rem;
@@ -524,12 +693,25 @@ onBeforeUnmount(() => {
   border-radius: 14px;
   background: rgba(6, 16, 34, 0.55);
   border: 1px solid rgba(244, 247, 255, 0.08);
+  flex-wrap: wrap;
+  align-items: end;
 }
 
 .meta > div {
   display: grid;
   gap: 0.12rem;
   min-width: 4.5rem;
+}
+
+.meta-actions {
+  display: flex !important;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
+.slim {
+  padding: 0.4rem 0.7rem;
+  font-size: 0.82rem;
 }
 
 .meta strong.connected {
@@ -541,13 +723,37 @@ onBeforeUnmount(() => {
   color: var(--danger);
 }
 
+.error,
+.banner {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  border-radius: 12px;
+  margin-bottom: 1rem;
+}
+
 .error {
   background: rgba(232, 93, 76, 0.15);
   border: 1px solid rgba(232, 93, 76, 0.45);
   color: #ffd2cc;
-  padding: 0.75rem 1rem;
-  border-radius: 12px;
-  margin-bottom: 1rem;
+}
+
+.banner.copied {
+  background: rgba(62, 207, 142, 0.14);
+  border: 1px solid rgba(62, 207, 142, 0.35);
+  color: var(--answer-text);
+}
+
+.banner.reconnect {
+  background: rgba(240, 208, 96, 0.12);
+  border: 1px solid rgba(240, 208, 96, 0.4);
+  color: var(--gold);
+}
+
+.restore {
+  margin: 0 0 1rem;
 }
 
 .waiting-start {

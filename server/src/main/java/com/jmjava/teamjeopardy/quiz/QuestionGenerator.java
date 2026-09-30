@@ -126,6 +126,21 @@ public class QuestionGenerator {
         );
     }
 
+    /**
+     * Assign 200–1000 values and optionally polish wording. Used by JIRA ingest so
+     * SPEC/REL categories skip coder/QA balancing.
+     */
+    public List<Category> polish(CodeGraph graph, List<Category> categories, QuestionHints hints) {
+        QuestionHints effective = hints == null ? QuestionHints.empty() : hints;
+        List<Category> normalized = (categories == null ? List.<Category>of() : categories).stream()
+                .filter(c -> c.clues() != null && !c.clues().isEmpty())
+                .limit(maxCategories)
+                .map(this::normalizeCategory)
+                .toList();
+        CodeGraph context = graph == null ? new CodeGraph("jira") : graph;
+        return enricher.enrich(context, normalized, effective.combined());
+    }
+
     private List<Category> selectBalanced(List<Ranked> ranked, int max, QuestionHints hints) {
         Comparator<Ranked> byPriority = Comparator
                 .comparingInt((Ranked r) -> hints.scoreCategory(r.category())).reversed()

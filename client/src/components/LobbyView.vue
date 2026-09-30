@@ -1,23 +1,39 @@
 <script setup>
-import { reactive } from 'vue'
+import { reactive, watch } from 'vue'
+import { appName } from '../theme'
 
-defineProps({
+const props = defineProps({
   busy: Boolean,
-  health: Object
+  health: Object,
+  initialCode: {
+    type: String,
+    default: ''
+  }
 })
 
 const emit = defineEmits(['create', 'join', 'open-admin'])
 
 const createForm = reactive({
   hostName: 'Host',
-  title: 'Team Jeopardy'
+  title: appName
 })
 
 const joinForm = reactive({
-  code: '',
+  code: (props.initialCode || '').toUpperCase(),
   displayName: '',
   teamName: ''
 })
+
+watch(
+  () => props.initialCode,
+  (code) => {
+    if (code && !joinForm.code) joinForm.code = code.toUpperCase()
+  }
+)
+
+function onCodeInput(event) {
+  joinForm.code = String(event.target.value || '').toUpperCase()
+}
 </script>
 
 <template>
@@ -59,7 +75,16 @@ const joinForm = reactive({
         <p class="muted tiny">Join the lobby — the host lets you in.</p>
         <label>
           Room code
-          <input v-model="joinForm.code" required maxlength="8" placeholder="ABC123" />
+          <input
+            v-model="joinForm.code"
+            required
+            maxlength="8"
+            placeholder="ABC123"
+            autocomplete="off"
+            spellcheck="false"
+            autocapitalize="characters"
+            @input="onCodeInput"
+          />
         </label>
         <label>
           Display name
@@ -110,7 +135,7 @@ const joinForm = reactive({
   margin: 0;
   font-size: 1.08rem;
   line-height: 1.5;
-  color: #d7e2f8;
+  color: var(--lede);
 }
 
 .cards {

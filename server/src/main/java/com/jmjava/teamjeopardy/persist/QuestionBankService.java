@@ -450,6 +450,17 @@ public class QuestionBankService {
         return "pulls:" + blankTo(repo, "");
     }
 
+    public static String sourceKeyForJira(List<String> projects, String release) {
+        String projectPart = projects == null || projects.isEmpty()
+                ? "*"
+                : projects.stream()
+                .filter(p -> p != null && !p.isBlank())
+                .map(p -> p.trim().toUpperCase(Locale.ROOT))
+                .sorted()
+                .collect(Collectors.joining(","));
+        return "jira:" + projectPart + "@" + blankTo(release, "");
+    }
+
     private void requireEnabled() {
         if (!enabled) {
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Question bank persistence is disabled");

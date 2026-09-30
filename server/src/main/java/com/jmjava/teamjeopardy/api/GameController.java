@@ -92,6 +92,39 @@ public class GameController {
         return new Dto.IngestResponse(snapshot, board, summary);
     }
 
+    @PostMapping("/rooms/ingest-jira")
+    public Dto.IngestResponse ingestJira(@Valid @RequestBody Dto.JiraIngestRequest request) throws IOException {
+        boolean useFixture = request.useFixture() == null || request.useFixture();
+        if (!useFixture && !boardFactory.jiraReleaseClient().isConfigured()) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,
+                    "JIRA credentials are not configured. Set JIRA_BASE_URL, JIRA_EMAIL, and JIRA_API_TOKEN, "
+                            + "or set useFixture=true."
+            );
+        }
+        QuestionHints hints = QuestionHints.of(request.questionHints(), request.questionFocuses());
+        BoardFactory.BuiltBoard built = boardFactory.fromJiraRelease(
+                request.projects(),
+                request.release(),
+                request.jql(),
+                useFixture,
+                request.fixture(),
+                request.boardTitle(),
+                hints
+        );
+        Board board = built.board();
+        Map<String, Object> summary = new LinkedHashMap<>(built.summary());
+        persistJiraBoard(request, board, summary, hints);
+        GameSnapshot snapshot = gameRoomService.installBoard(
+                request.roomId(),
+                request.playerId(),
+                board,
+                hints.combined()
+        );
+        broadcaster.broadcast(request.roomId());
+        return new Dto.IngestResponse(snapshot, board, summary);
+    }
+
     /**
      * Admin helper: list directories in a GitHub repo for selective ingest.
      */
@@ -173,7 +206,7 @@ public class GameController {
         body.put("status", "ok");
         body.put("engine", "team-jeopardy-ingest");
         body.put("supported", new String[]{
-                "maven", "gradle", "vue", "npm", "python", "github", "pulls", "generic"
+                "maven", "gradle", "vue", "npm", "python", "github", "pulls", "jira", "generic"
         });
         body.put("samples", boardFactory.samplePaths());
         body.put("defaultRepo", boardFactory.defaultRepo());
@@ -181,7 +214,35 @@ public class GameController {
                 "patterns", "pull-requests", "qa", "apis", "architecture", "components", "security"
         ));
         body.put("questionBank", questionBankService.status());
+        Map<String, Object> jira = new LinkedHashMap<>();
+        jira.put("configured", boardFactory.jiraReleaseClient().isConfigured());
+        jira.put("readOnly", true);
+        body.put("jira", jira);
         return body;
+    }
+
+    private void persistJiraBoard(
+            Dto.JiraIngestRequest request,
+            Board board,
+            Map<String, Object> summary,
+            QuestionHints hints
+    ) {
+        String release = request.release() == null ? "" : request.release().trim();
+        if (release.isBlank()) {
+            Object fromSummary = summary.get("release");
+            release = fromSummary == null ? "" : String.valueOf(fromSummary);
+        }
+        questionBankService.saveGenerated(
+                board,
+                summary,
+                "jira",
+                QuestionBankService.sourceKeyForJira(request.projects(), release),
+                hints
+        ).ifPresent(saved -> {
+            summary.put("savedBoardId", saved.id());
+            summary.put("fingerprint", saved.fingerprint());
+            summary.put("persisted", true);
+        });
     }
 
     private void persistGeneratedBoard(

@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { listQuestionBank } from '../api'
 
 const props = defineProps({
@@ -7,6 +7,7 @@ const props = defineProps({
   busy: Boolean,
   ingestSummary: Object,
   displayUrl: String,
+  joinUrl: String,
   defaultRepo: {
     type: String,
     default: 'jmjava/team-jeopardy'
@@ -17,13 +18,17 @@ const emit = defineEmits([
   'ingest',
   'ingest-github',
   'ingest-pulls',
+  'ingest-jira',
   'admit',
   'admit-all',
   'start',
   'open-display',
   'browse-github',
   'load-saved',
-  'open-admin'
+  'open-admin',
+  'copy-code',
+  'copy-join',
+  'copy-display'
 ])
 
 const focusOptions = [
@@ -37,11 +42,19 @@ const focusOptions = [
 ]
 
 const github = reactive({
-  repo: props.defaultRepo || 'jmjava/skgraph',
+  repo: props.defaultRepo || 'jmjava/team-jeopardy',
   ref: 'main',
   foldersText: '',
   includePulls: true,
   wholeRepo: true
+})
+
+const jira = reactive({
+  projects: 'PROJ',
+  release: '2.4.0',
+  jql: '',
+  useFixture: true,
+  fixture: 'one-project'
 })
 
 const hints = reactive({
@@ -53,6 +66,16 @@ const folderChoices = ref([])
 const browseBusy = ref(false)
 const savedBoards = ref([])
 const savedBusy = ref(false)
+const copiedLocal = ref('')
+let copiedLocalTimer = 0
+
+function markCopied(kind) {
+  copiedLocal.value = kind
+  window.clearTimeout(copiedLocalTimer)
+  copiedLocalTimer = window.setTimeout(() => {
+    copiedLocal.value = ''
+  }, 2500)
+}
 
 async function refreshSavedBoards() {
   savedBusy.value = true
@@ -67,6 +90,55 @@ async function refreshSavedBoards() {
 }
 
 onMounted(refreshSavedBoards)
+
+watch(
+  () => props.defaultRepo,
+  (repo, prev) => {
+    if (!repo) return
+    if (!github.repo || github.repo === prev || github.repo === 'jmjava/skgraph') {
+      github.repo = repo
+    }
+  }
+)
+
+const summaryRows = computed(() => {
+  const summary = props.ingestSummary
+  if (!summary || typeof summary !== 'object') return []
+  const preferred = [
+    'source',
+    'projectKind',
+    'projectName',
+    'repo',
+    'release',
+    'issues',
+    'nodes',
+    'edges',
+    'patternFacts',
+    'categories',
+    'savedBoardId',
+    'persisted'
+  ]
+  const rows = []
+  const seen = new Set()
+  for (const key of preferred) {
+    if (summary[key] === undefined || summary[key] === null || summary[key] === '') continue
+    rows.push({ key, value: formatSummaryValue(summary[key]) })
+    seen.add(key)
+  }
+  for (const [key, value] of Object.entries(summary)) {
+    if (seen.has(key) || value == null || value === '') continue
+    if (typeof value === 'object' && !Array.isArray(value)) continue
+    rows.push({ key, value: formatSummaryValue(value) })
+    if (rows.length >= 12) break
+  }
+  return rows
+})
+
+function formatSummaryValue(value) {
+  if (Array.isArray(value)) return value.slice(0, 8).join(', ')
+  if (typeof value === 'boolean') return value ? 'yes' : 'no'
+  return String(value)
+}
 
 const waiting = computed(() =>
   (props.snapshot?.players || []).filter((p) => !p.host && !p.admitted)
@@ -104,6 +176,21 @@ function sampleIngest(type) {
 function pullsIngest() {
   emit('ingest-pulls', {
     repo: github.repo,
+    ...hintPayload()
+  })
+}
+
+function jiraIngest() {
+  const projects = jira.projects
+    .split(/[\n,]/)
+    .map((s) => s.trim())
+    .filter(Boolean)
+  emit('ingest-jira', {
+    projects,
+    release: jira.release,
+    jql: jira.jql,
+    useFixture: jira.useFixture,
+    fixture: jira.fixture,
     ...hintPayload()
   })
 }
@@ -171,6 +258,14 @@ function addFolder(path) {
       <div class="room-chip">
         <span class="muted">Room code</span>
         <strong>{{ snapshot?.code }}</strong>
+        <div class="row tight">
+          <button type="button" class="secondary slim" @click="markCopied('code'); emit('copy-code')">
+            {{ copiedLocal === 'code' ? 'Copied' : 'Copy code' }}
+          </button>
+          <button type="button" class="secondary slim" @click="markCopied('join'); emit('copy-join')">
+            {{ copiedLocal === 'join' ? 'Copied' : 'Player link' }}
+          </button>
+        </div>
       </div>
     </header>
 
@@ -191,6 +286,7 @@ function addFolder(path) {
                 type="button"
                 class="chip"
                 :class="{ on: hints.focuses.includes(opt.id) }"
+                :aria-pressed="hints.focuses.includes(opt.id)"
                 @click="toggleFocus(opt.id)"
               >
                 {{ opt.label }}
@@ -215,7 +311,7 @@ function addFolder(path) {
           <div class="step-num">2</div>
           <div class="step-body">
             <h3>Research base</h3>
-            <p class="muted">Samples for a quick board, or ingest from GitHub (whole repo or folders).</p>
+            <p class="muted">Samples for a quick board, GitHub, or a JIRA release (SPEC/REL).</p>
 
             <div class="row">
               <button :disabled="busy" @click="sampleIngest('maven')">Maven</button>
@@ -276,8 +372,51 @@ function addFolder(path) {
               </div>
             </div>
 
+            <div class="jira-box">
+              <h4>JIRA release</h4>
+              <p class="muted">
+                Read-only search. Tokens stay in server env — never pasted here.
+                Fixtures use jira.example / PROJ / SHOP.
+              </p>
+              <div class="fields">
+                <label>
+                  Projects (comma list)
+                  <input v-model="jira.projects" placeholder="PROJ, SHOP" />
+                </label>
+                <label>
+                  Release (fixVersion)
+                  <input v-model="jira.release" placeholder="2.4.0" />
+                </label>
+              </div>
+              <label class="block">
+                Extra JQL (optional)
+                <input v-model="jira.jql" placeholder="status = Done" />
+              </label>
+              <label class="check">
+                <input v-model="jira.useFixture" type="checkbox" />
+                Use sanitized fixture (offline, no JIRA token)
+              </label>
+              <label v-if="jira.useFixture" class="block">
+                Fixture
+                <select v-model="jira.fixture">
+                  <option value="one-project">One project (fat release)</option>
+                  <option value="multi">Several projects</option>
+                </select>
+              </label>
+              <div class="row">
+                <button class="ok" :disabled="busy" @click="jiraIngest">
+                  {{ busy ? 'Building…' : 'Build from JIRA release' }}
+                </button>
+              </div>
+            </div>
+
             <p v-if="snapshot?.board" class="ready">Board ready · {{ snapshot.board.title }}</p>
-            <pre v-if="ingestSummary" class="summary">{{ ingestSummary }}</pre>
+            <dl v-if="summaryRows.length" class="summary">
+              <div v-for="row in summaryRows" :key="row.key">
+                <dt>{{ row.key }}</dt>
+                <dd>{{ row.value }}</dd>
+              </div>
+            </dl>
 
             <div class="saved-box">
               <div class="saved-head">
@@ -332,8 +471,12 @@ function addFolder(path) {
               <button class="secondary" type="button" @click="emit('open-display')">
                 Open shared display
               </button>
+              <button class="secondary" type="button" @click="emit('copy-display')">
+                Copy display link
+              </button>
             </div>
             <p v-if="displayUrl" class="display-url muted">{{ displayUrl }}</p>
+            <p v-if="joinUrl" class="display-url muted">Players: {{ joinUrl }}</p>
           </div>
         </article>
 
@@ -343,6 +486,7 @@ function addFolder(path) {
             <h3>Start the game</h3>
             <p class="muted">Needs a board and at least one admitted teamed player.</p>
             <button class="ok" :disabled="!canStart" @click="emit('start')">Start game</button>
+            <p class="muted keys">Host keys: Enter opens buzzers · C/X judges · R reveals · Esc board</p>
           </div>
         </article>
       </div>
@@ -414,7 +558,7 @@ function addFolder(path) {
 .console-head h2 { font-size: clamp(2rem, 4vw, 2.6rem); }
 .room-chip {
   padding: 0.7rem 1rem; border-radius: 14px; background: rgba(6, 16, 34, 0.55);
-  border: 1px solid rgba(244, 247, 255, 0.1); display: grid; gap: 0.15rem; min-width: 8rem;
+  border: 1px solid rgba(244, 247, 255, 0.1); display: grid; gap: 0.15rem; min-width: 11rem;
 }
 .room-chip strong {
   font-family: "Bebas Neue", sans-serif; font-size: 1.8rem; letter-spacing: 0.12em; color: var(--gold);
@@ -448,7 +592,7 @@ function addFolder(path) {
 }
 .block, label { display: grid; gap: 0.35rem; color: var(--muted); font-size: 0.92rem; }
 .block { margin-top: 0.7rem; }
-textarea, .fields input {
+textarea, .fields input, .jira-box select {
   width: 100%; border-radius: 10px; border: 1px solid rgba(244, 247, 255, 0.18);
   background: rgba(255, 255, 255, 0.06); color: var(--text); padding: 0.75rem 0.9rem;
   font: inherit; resize: vertical;
@@ -460,6 +604,7 @@ textarea, .fields input {
   display: flex; align-items: center; gap: 0.5rem; margin-top: 0.65rem; color: var(--text);
 }
 .github-box,
+.jira-box,
 .saved-box {
   margin-top: 1rem; padding: 0.9rem 1rem; border-radius: 14px;
   background: rgba(0, 0, 0, 0.18); border: 1px solid rgba(244, 247, 255, 0.06);
@@ -488,8 +633,12 @@ textarea, .fields input {
 .ready { margin: 0.75rem 0 0; color: var(--ok); font-weight: 600; }
 .summary {
   margin-top: 0.75rem; padding: 0.75rem; border-radius: 12px; background: rgba(0, 0, 0, 0.28);
-  overflow: auto; font-size: 0.8rem; max-height: 10rem;
+  display: grid; gap: 0.35rem; font-size: 0.82rem; max-height: 12rem; overflow: auto;
 }
+.summary div { display: grid; grid-template-columns: 8.5rem 1fr; gap: 0.45rem; }
+.summary dt { margin: 0; color: var(--muted); text-transform: lowercase; }
+.summary dd { margin: 0; word-break: break-word; }
+.keys { margin: 0.65rem 0 0; font-size: 0.85rem; }
 .display-url { margin: 0.6rem 0 0; font-size: 0.85rem; word-break: break-all; }
 .roster { display: grid; gap: 0.85rem; }
 .panel {
