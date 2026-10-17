@@ -4,6 +4,7 @@ import com.jmjava.teamjeopardy.github.PullRequestFact;
 import com.jmjava.teamjeopardy.graph.CodeGraph;
 import com.jmjava.teamjeopardy.quiz.Category;
 import com.jmjava.teamjeopardy.quiz.Clue;
+import com.jmjava.teamjeopardy.quiz.JeopardyStyle;
 import com.jmjava.teamjeopardy.quiz.QuestionPersona;
 import org.springframework.stereotype.Component;
 
@@ -59,7 +60,7 @@ public class PrQuestionStrategy implements QuestionStrategy {
         for (PullRequestFact pr : prs.stream().limit(8).toList()) {
             clues.add(clue(seq,
                     "This recent PR is titled:\n\"" + pr.title() + "\"",
-                    "What is PR #" + pr.number() + "?",
+                    JeopardyStyle.whatIs("PR #" + pr.number()),
                     "Author " + pr.author() + (pr.merged() ? " · merged" : " · " + pr.state()),
                     pr.htmlUrl()));
         }
@@ -76,12 +77,12 @@ public class PrQuestionStrategy implements QuestionStrategy {
                 .forEach(e -> clues.add(clue(seq,
                         "This contributor authored " + e.getValue()
                                 + " of the recent PRs in this board.",
-                        "Who is " + e.getKey() + "?",
+                        JeopardyStyle.whoIs(e.getKey()),
                         "Counted from pull request authors.",
                         null)));
         prs.stream().limit(4).forEach(pr -> clues.add(clue(seq,
-                "Who opened PR #" + pr.number() + " — \"" + shortTitle(pr.title()) + "\"?",
-                "Who is " + pr.author() + "?",
+                "This contributor opened PR #" + pr.number() + " — \"" + shortTitle(pr.title()) + "\".",
+                JeopardyStyle.whoIs(pr.author()),
                 pr.merged() ? "Merged into " + nullTo(pr.baseRef(), "main") : "State: " + pr.state(),
                 pr.htmlUrl())));
         return new Category("cat-pr-authors", "PR: WHO SHIPPED IT", clues);
@@ -100,7 +101,7 @@ public class PrQuestionStrategy implements QuestionStrategy {
                 .limit(4)
                 .forEach(e -> clues.add(clue(seq,
                         "This path shows up in " + e.getValue() + " recent PR(s).",
-                        "What is " + e.getKey() + "?",
+                        JeopardyStyle.whatIs(e.getKey()),
                         "Aggregated from PR file lists.",
                         null)));
 
@@ -110,9 +111,9 @@ public class PrQuestionStrategy implements QuestionStrategy {
                 .forEach(pr -> {
                     String sample = pr.files().stream().limit(3).collect(Collectors.joining(", "));
                     clues.add(clue(seq,
-                            "PR #" + pr.number() + " touched files including: " + sample
-                                    + (pr.files().size() > 3 ? ", …" : ""),
-                            "What is PR #" + pr.number() + "?",
+                            "These paths changed together: " + sample
+                                    + (pr.files().size() > 3 ? ", …" : "") + ".",
+                            JeopardyStyle.whatIs("PR #" + pr.number()),
                             pr.title(),
                             pr.htmlUrl()));
                 });
@@ -128,8 +129,8 @@ public class PrQuestionStrategy implements QuestionStrategy {
                 .forEach(pr -> clues.add(clue(seq,
                         "QA risk hotspot: +" + pr.additions() + " / −" + pr.deletions()
                                 + " across " + Math.max(pr.changedFiles(), pr.files().size())
-                                + " files — which PR?",
-                        "What is PR #" + pr.number() + "?",
+                                + " files, titled \"" + shortTitle(pr.title()) + "\".",
+                        JeopardyStyle.whatIs("PR #" + pr.number()),
                         pr.title() + " by " + pr.author(),
                         pr.htmlUrl())));
 
@@ -137,17 +138,17 @@ public class PrQuestionStrategy implements QuestionStrategy {
                 .filter(pr -> pr.labels() != null && !pr.labels().isEmpty())
                 .limit(4)
                 .forEach(pr -> clues.add(clue(seq,
-                        "Labels on PR #" + pr.number() + " include: "
+                        "GitHub labels on this change include: "
                                 + String.join(", ", pr.labels()) + ".",
-                        "What is PR #" + pr.number() + "?",
-                        "Useful for triage / test focus.",
+                        JeopardyStyle.whatIs("PR #" + pr.number()),
+                        "Useful for triage / test focus. " + pr.title(),
                         pr.htmlUrl())));
 
         long open = prs.stream().filter(pr -> "open".equalsIgnoreCase(pr.state()) && !pr.merged()).count();
         if (!prs.isEmpty()) {
             clues.add(0, clue(seq,
-                    "Among the recent PRs ingested, how many are still open (not merged)?",
-                    "What is " + open + "?",
+                    "Among the recent PRs ingested, this many are still open (not merged).",
+                    JeopardyStyle.whatIs(String.valueOf(open)),
                     "Open && !merged count.",
                     null));
         }
@@ -158,13 +159,13 @@ public class PrQuestionStrategy implements QuestionStrategy {
         List<Clue> clues = new ArrayList<>();
         long merged = prs.stream().filter(PullRequestFact::merged).count();
         clues.add(clue(seq,
-                "How many of the recent PRs in this board were merged?",
-                "What is " + merged + "?",
+                "This many of the recent PRs in this board were merged.",
+                JeopardyStyle.whatIs(String.valueOf(merged)),
                 "merged_at present on GitHub payload.",
                 null));
         clues.add(clue(seq,
-                "How many recent PRs were pulled into this Jeopardy board?",
-                "What is " + prs.size() + "?",
+                "This many recent PRs were pulled into this Jeopardy board.",
+                JeopardyStyle.whatIs(String.valueOf(prs.size())),
                 "GitHub pulls ingest limit.",
                 null));
 
@@ -175,7 +176,7 @@ public class PrQuestionStrategy implements QuestionStrategy {
                 .max(Map.Entry.comparingByValue())
                 .ifPresent(e -> clues.add(clue(seq,
                         "Most of these PRs target this base branch.",
-                        "What is " + e.getKey() + "?",
+                        JeopardyStyle.whatIs(e.getKey()),
                         e.getValue() + " PR(s).",
                         null)));
 
@@ -184,7 +185,7 @@ public class PrQuestionStrategy implements QuestionStrategy {
                 .limit(3)
                 .forEach(pr -> clues.add(clue(seq,
                         "PR description excerpt:\n" + excerpt(pr.body(), 160),
-                        "What is PR #" + pr.number() + "?",
+                        JeopardyStyle.whatIs("PR #" + pr.number()),
                         pr.title(),
                         pr.htmlUrl())));
         return new Category("cat-pr-merge", "PR: MERGE MATH", clues);

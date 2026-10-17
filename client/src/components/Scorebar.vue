@@ -1,4 +1,7 @@
 <script setup>
+import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { getGameSfx } from '../useGameSfx'
+
 defineProps({
   teams: {
     type: Array,
@@ -8,6 +11,16 @@ defineProps({
   compact: Boolean,
   buzzedTeamId: String
 })
+
+const sfx = getGameSfx()
+const localMuted = ref(sfx.muted)
+let off
+onMounted(() => {
+  off = sfx.onMuteChange((value) => {
+    localMuted.value = value
+  })
+})
+onBeforeUnmount(() => off?.())
 
 const phaseLabel = {
   LOBBY: 'Lobby',
@@ -34,6 +47,14 @@ const phaseLabel = {
         <span class="name">{{ team.name }}</span>
         <strong>${{ team.score }}</strong>
       </div>
+      <button
+        class="mute secondary"
+        type="button"
+        :title="localMuted ? 'Unmute game sounds' : 'Mute game sounds'"
+        @click="sfx.toggleMuted()"
+      >
+        {{ localMuted ? 'Sound off' : 'Sound on' }}
+      </button>
     </div>
   </section>
 </template>
@@ -99,6 +120,13 @@ const phaseLabel = {
   font-size: 1.45rem;
   letter-spacing: 0.04em;
   line-height: 1;
+}
+
+.mute {
+  padding: 0.45rem 0.7rem;
+  font-size: 0.78rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 
 @media (max-width: 700px) {

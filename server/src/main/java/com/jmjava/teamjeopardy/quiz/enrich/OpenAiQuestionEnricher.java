@@ -159,7 +159,9 @@ public class OpenAiQuestionEnricher implements QuestionEnricher {
                 Rules:
                 - Keep Jeopardy style: the clue is a statement; players respond as a question.
                 - Do NOT change the correct answer; the response field is fixed by the server.
+                - Never include the exact answer token, identifier, or PR number in the prompt.
                 - Prefer concrete code/architecture wording over trivia counts.
+                - Do not start the prompt with How, Who, What, Where, When, Which, or Why.
                 - For QA-oriented categories, emphasize contracts, regressions, risk, and test targets.
                 - For coder categories, emphasize APIs, patterns, call structure, and ownership.
                 - For SPEC/REL categories, rewrite ticket paste into Jeopardy product-knowledge wording.

@@ -6,6 +6,7 @@ import com.jmjava.teamjeopardy.graph.CodeNode;
 import com.jmjava.teamjeopardy.pattern.PatternFact;
 import com.jmjava.teamjeopardy.quiz.Category;
 import com.jmjava.teamjeopardy.quiz.Clue;
+import com.jmjava.teamjeopardy.quiz.JeopardyStyle;
 import com.jmjava.teamjeopardy.quiz.QuestionPersona;
 import org.springframework.stereotype.Component;
 
@@ -83,17 +84,17 @@ public class QaQuestionStrategy implements QuestionStrategy {
                             .map(id -> graph.findById(id).map(CodeNode::name).orElse(id))
                             .toList();
                     clues.add(clue(seq,
-                            "QA test matrix: `" + parent.name() + "` has " + names.size()
-                                    + " variants — name the abstraction under test.",
-                            "What is " + parent.name() + "?",
+                            "A combinatorial QA matrix covers " + names.size()
+                                    + " concrete variants: " + String.join(", ", names) + ".",
+                            JeopardyStyle.whatIs(parent.name()),
                             "Variants: " + String.join(", ", names),
                             parent.filePath()));
                     if (names.size() >= 2) {
+                        String siblings = String.join(", ", names.subList(1, names.size()));
                         clues.add(clue(seq,
-                                "A regression suite for `" + parent.name()
-                                        + "` should cover this concrete variant among: "
-                                        + String.join(", ", names) + ".",
-                                "What is " + names.get(0) + "?",
+                                "Alongside " + siblings
+                                        + ", this sibling implements the same abstraction and belongs on the variant matrix.",
+                                JeopardyStyle.whatIs(names.get(0)),
                                 "One of " + names.size() + " implementors/subclasses.",
                                 parent.filePath()));
                     }
@@ -109,18 +110,24 @@ public class QaQuestionStrategy implements QuestionStrategy {
         graph.nodesOfKind(CodeNode.NodeKind.FUNCTION).stream()
                 .filter(n -> n.name() != null && (n.name().endsWith(".props") || "props".equals(n.signature())))
                 .limit(4)
-                .forEach(props -> clues.add(clue(seq,
-                        "Contract check: this Vue props declaration must stay stable for UI tests — `"
-                                + truncate(props.snippet() == null ? props.qualifiedName() : props.snippet(), 120) + "`.",
-                        "What is " + props.name().replace(".props", "") + "?",
-                        "COMPONENT props contract.",
-                        props.filePath())));
+                .forEach(props -> {
+                    String answer = props.name().replace(".props", "");
+                    clues.add(clue(seq,
+                            "Contract check: this Vue props declaration must stay stable for UI tests — `"
+                                    + JeopardyStyle.redact(
+                                            truncate(props.snippet() == null ? props.qualifiedName() : props.snippet(), 120),
+                                            answer)
+                                    + "`.",
+                            JeopardyStyle.whatIs(answer),
+                            "COMPONENT props contract.",
+                            props.filePath()));
+                });
 
         graph.nodesOfKind(CodeNode.NodeKind.ROUTE).stream().limit(4).forEach(route ->
                 clues.add(clue(seq,
-                        "Boundary contract: an HTTP/router path registered as `" + route.name()
-                                + "` — where would an E2E smoke hit first?",
-                        "What is " + route.name() + "?",
+                        "An E2E smoke would hit this registered router path first, declared in `"
+                                + JeopardyStyle.redact(JeopardyStyle.basename(route.filePath()), route.name()) + "`.",
+                        JeopardyStyle.whatIs(route.name()),
                         route.signature(),
                         route.filePath())));
 
@@ -131,9 +138,9 @@ public class QaQuestionStrategy implements QuestionStrategy {
                         a.signature() == null ? 0 : a.signature().length()))
                 .limit(4)
                 .forEach(m -> clues.add(clue(seq,
-                        "API contract under test: `" + m.signature()
-                                + "` in `" + m.filePath() + "`. Name the callable.",
-                        "What is " + m.name() + "?",
+                        "API contract under test in `" + JeopardyStyle.pathHint(m.filePath(), m.name())
+                                + "`: `" + JeopardyStyle.redact(m.signature(), m.name()) + "`.",
+                        JeopardyStyle.whatIs(m.name()),
                         "Signature-level contract for unit/integration tests.",
                         m.filePath())));
 
@@ -163,7 +170,7 @@ public class QaQuestionStrategy implements QuestionStrategy {
                     clues.add(clue(seq,
                             "Blast radius: " + e.getValue()
                                     + " inbound edges target this symbol — a high-value regression candidate.",
-                            "What is " + node.name() + "?",
+                            JeopardyStyle.whatIs(node.name()),
                             "Fan-in across USES/CALLS/IMPORTS/EXTENDS/IMPLEMENTS.",
                             node.filePath()));
                 }));
@@ -173,7 +180,7 @@ public class QaQuestionStrategy implements QuestionStrategy {
             String child = graph.findById(edge.toId()).map(CodeNode::name).orElse("?");
             clues.add(clue(seq,
                     "If `" + child + "` breaks rendering, this parent component's UI test likely fails first.",
-                    "What is " + parent + "?",
+                    JeopardyStyle.whatIs(parent),
                     "Vue USES composition edge.",
                     graph.findById(edge.fromId()).map(CodeNode::filePath).orElse(null)));
         });
@@ -196,8 +203,8 @@ public class QaQuestionStrategy implements QuestionStrategy {
                 continue;
             }
             clues.add(clue(seq,
-                    risk + " Evidence: " + fact.text(),
-                    "What is " + pattern + "?",
+                    risk + " Evidence: " + JeopardyStyle.redact(fact.text(), pattern),
+                    JeopardyStyle.whatIs(pattern),
                     "QA risk lens on PatternFact (" + fact.language() + ").",
                     fact.evidenceFile()));
         }
@@ -212,25 +219,25 @@ public class QaQuestionStrategy implements QuestionStrategy {
         }
         String p = pattern.toLowerCase(Locale.ROOT);
         if (p.contains("singleton")) {
-            return "Shared mutable state risk — which pattern needs isolation between tests?";
+            return "Shared mutable state between tests is a smell for this creational pattern.";
         }
         if (p.contains("observer") || p.contains("listener")) {
-            return "Subscription leak risk — which pattern needs register/unregister coverage?";
+            return "Register/unregister coverage is required for this evented pattern.";
         }
         if (p.contains("strategy")) {
-            return "Combinatorial behavior risk — which pattern needs a variant matrix?";
+            return "A combinatorial variant matrix is the right QA lens for this behavioral pattern.";
         }
         if (p.contains("repository") || p.contains("dao")) {
-            return "Persistence boundary risk — which pattern needs fake/in-memory doubles?";
+            return "Fake or in-memory doubles belong at this persistence boundary.";
         }
         if (p.contains("store") || p.contains("pinia") || p.contains("vuex")) {
-            return "Client state risk — which pattern needs store reset between UI tests?";
+            return "Client UI tests should reset this state container between cases.";
         }
         if (p.contains("middleware")) {
-            return "Pipeline ordering risk — which pattern needs negative-path filter tests?";
+            return "Negative-path filter tests belong on this request pipeline pattern.";
         }
         if (p.contains("factory")) {
-            return "Construction edge-case risk — which pattern needs null/invalid input tests?";
+            return "Null and invalid-input tests belong on this construction pattern.";
         }
         return null;
     }

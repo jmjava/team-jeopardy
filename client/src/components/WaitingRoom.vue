@@ -51,7 +51,7 @@ h2 {
   margin: 0;
   font-size: 1.1rem;
   line-height: 1.5;
-  color: #d7e2f8;
+  color: var(--lede);
 }
 
 .pulse {

@@ -244,6 +244,16 @@ class GameRoomServiceTest {
         assertEquals(GamePhase.BUZZ_LOCKED, end.pub().phase());
     }
 
+    @Test
+    void joinAcceptsLowercaseRoomCode() {
+        var created = service.createRoom("Pat", "Demo");
+        String code = created.snapshot().code();
+        var joined = service.joinRoom(code.toLowerCase(), "Alex", "Blue");
+        assertNotNull(joined.playerId());
+        assertEquals(created.snapshot().roomId(), joined.snapshot().roomId());
+        assertTrue(service.findByCode("  " + code.toLowerCase() + " ").isPresent());
+    }
+
     private static Board demoBoard(String clueId) {
         return new Board(
                 "Demo",

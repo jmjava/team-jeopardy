@@ -17,6 +17,9 @@ import org.springframework.web.server.ResponseStatusException;
  * Clients send actions to /app/room/{roomId}/action.
  * Public/shared displays subscribe to /topic/room.{roomId}.
  * Moderator consoles also subscribe to /topic/room.{roomId}.host for full clue text.
+ * Action rejections stay on the STOMP session. Typed receipts go to
+ * /topic/room.{roomId}.player.{playerId}; a Map payload also goes to
+ * /topic/room.{roomId}.errors.
  */
 @Controller
 public class GameWsController {
@@ -42,13 +45,22 @@ public class GameWsController {
         } catch (ResponseStatusException ex) {
             // Keep the STOMP session open: a lost buzz race must not kick the player.
             log.info("Rejected {} in room {}: {}", type, roomId, ex.getReason());
-            GameSnapshot current = null;
-            try {
-                current = gameRoomService.publicSnapshot(roomId);
-            } catch (RuntimeException ignored) {
-                // room vanished
-            }
+            GameSnapshot current = snapshotOrNull(roomId);
             broadcaster.sendReceipt(ActionReceipt.rejected(roomId, playerId, type, ex.getReason(), current));
+            broadcaster.sendActionError(roomId, playerId, type, ex.getReason());
+        } catch (RuntimeException ex) {
+            log.warn("Failed {} in room {}: {}", type, roomId, ex.getMessage());
+            GameSnapshot current = snapshotOrNull(roomId);
+            broadcaster.sendReceipt(ActionReceipt.rejected(roomId, playerId, type, "Action failed", current));
+            broadcaster.sendActionError(roomId, playerId, type, "Action failed");
+        }
+    }
+
+    private GameSnapshot snapshotOrNull(String roomId) {
+        try {
+            return gameRoomService.publicSnapshot(roomId);
+        } catch (RuntimeException ignored) {
+            return null;
         }
     }
 }

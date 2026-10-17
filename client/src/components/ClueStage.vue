@@ -21,6 +21,8 @@ const isLocked = computed(() => props.phase === 'BUZZ_LOCKED')
 const isRevealed = computed(() => props.phase === 'ANSWER_REVEALED')
 
 function onKey(e) {
+  if (e.repeat) return
+  if (e.target?.closest?.('input, textarea, select, button')) return
   if (e.code === 'Space' && props.canBuzz && isOpen.value) {
     e.preventDefault()
     emit('buzz')
@@ -32,7 +34,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 </script>
 
 <template>
-  <section class="stage" :class="[mode, phase]" v-if="clue">
+  <section class="stage" :class="[mode, phase, { thinking: isOpen }]" v-if="clue">
     <header class="banner">
       <span class="cat">{{ clue.categoryTitle }}</span>
       <strong class="value">${{ clue.value }}</strong>
@@ -47,6 +49,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
     </div>
 
     <article v-else-if="!isPreview || isHost" class="prompt">
+      <p v-if="isOpen" class="kicker form-hint">Answer in the form of a question</p>
       <pre v-if="clue.prompt">{{ clue.prompt }}</pre>
       <p v-else class="muted">Waiting for clue…</p>
       <p v-if="clue.sourcePath && isHost" class="muted source">{{ clue.sourcePath }}</p>
@@ -55,6 +58,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
     <div
       v-if="isLocked || clue.buzzedPlayerName"
       class="buzz-banner"
+      role="status"
+      aria-live="assertive"
       :style="{ '--team': clue.buzzedTeamColor || 'var(--gold)' }"
     >
       <p class="kicker">First buzz</p>
@@ -75,7 +80,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
         @click="emit('buzz')"
       >
         Buzz
-        <span class="hint">Space</span>
+        <span class="hint" aria-hidden="true">Space</span>
       </button>
 
       <p v-if="canBuzz && isLocked" class="locked-msg muted">Buzzers locked</p>
@@ -84,17 +89,28 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
       <template v-if="isHost">
         <button v-if="isPreview" class="ok" @click="emit('open')">
           Show clue &amp; open buzzers
+          <span class="hint" aria-hidden="true">Enter</span>
         </button>
-        <button v-if="isLocked" class="ok" @click="emit('judge', true)">Correct</button>
-        <button v-if="isLocked" class="danger" @click="emit('judge', false)">Incorrect</button>
+        <button v-if="isLocked" class="ok" @click="emit('judge', true)">
+          Correct
+          <span class="hint" aria-hidden="true">C</span>
+        </button>
+        <button v-if="isLocked" class="danger" @click="emit('judge', false)">
+          Incorrect
+          <span class="hint" aria-hidden="true">X</span>
+        </button>
         <button
           v-if="!isRevealed"
           class="secondary"
           @click="emit('reveal')"
         >
           Reveal answer
+          <span class="hint" aria-hidden="true">R</span>
         </button>
-        <button v-if="isRevealed" @click="emit('back')">Back to board</button>
+        <button v-if="isRevealed" @click="emit('back')">
+          Back to board
+          <span class="hint" aria-hidden="true">Esc</span>
+        </button>
       </template>
     </div>
   </section>
@@ -112,11 +128,14 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
   animation: rise 280ms ease both;
 }
 
-.stage.display {
-  min-height: 58vh;
-  align-content: center;
-  text-align: center;
-  padding: 2rem 1.75rem;
+.stage.thinking {
+  box-shadow: 0 0 0 1px rgba(240, 208, 96, 0.28), var(--shadow);
+  animation: think-glow 1.4s ease-in-out infinite;
+}
+
+.form-hint {
+  color: var(--gold);
+  margin-bottom: 0.55rem;
 }
 
 .banner {
@@ -215,10 +234,17 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
   border: 1px solid rgba(62, 207, 142, 0.35);
 }
 
+.controls button:not(.buzz) {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+}
+
 .answer h3 {
   margin: 0.25rem 0 0.4rem;
   font-size: clamp(1.4rem, 3vw, 2rem);
-  color: #b9f5d4;
+  color: var(--answer-text);
 }
 
 .controls {
@@ -290,6 +316,16 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+@keyframes think-glow {
+  0%,
+  100% {
+    box-shadow: 0 0 0 1px rgba(240, 208, 96, 0.2), var(--shadow);
+  }
+  50% {
+    box-shadow: 0 0 24px 2px rgba(240, 208, 96, 0.35), var(--shadow);
   }
 }
 </style>

@@ -63,6 +63,20 @@ export OPENAI_API_KEY=sk-...
 
 Without a key, ingest and boards still work end-to-end offline.
 
+### White-label (build-time)
+
+Optional Vite env in `client/.env` (see `client/.env.example`):
+
+```bash
+VITE_APP_NAME="Code Quiz Night"
+VITE_LOGO_URL=/logo.svg
+VITE_ACCENT_COLOR=#38bdf8
+VITE_BOARD_COLOR=#1e3a5f
+VITE_BACKGROUND_COLOR=#0a1628
+```
+
+Rebuild the client after changing these. Full checklist: [`docs/white-label.md`](docs/white-label.md).
+
 ## JIRA release boards (SPEC / REL)
 
 Host picks **one release** (`fixVersion`) and **one or more JIRA projects**. The server
@@ -167,7 +181,18 @@ cd client && npm install && npm run dev
 
 Open http://localhost:5173 — create a room, ingest Maven / Gradle / Vue / Python sample, start game.
 
+Share the **room code** or a player link (`/?code=ABC123`). Refresh keeps your seat (session storage) until the server restarts — rooms are in-memory. The shared display is `/?view=display&room=…&code=…`.
+
 Remote clients share a monotonic `revision` on every snapshot. The Vue app drops late packets and **GET-resyncs on every STOMP connect** so a dropped player or display catches up without waiting for the next host action. Buzz races are serialized on the room lock: one winner; losers stay connected and get a per-player STOMP receipt (`/topic/room.{id}.player.{playerId}`). A miss locks that player out of the rest of the clue.
+
+### Keyboard
+
+| Who | Keys |
+|-----|------|
+| Player | **Space** buzzes when buzzers are open |
+| Host | **Enter** / **O** open buzzers · **C** / **Y** correct · **X** / **N** incorrect · **R** reveal · **Esc** / **B** back to board |
+
+Host shortcuts ignore typing in inputs. Lost buzz races stay on the STOMP session; the acting player sees the rejection inline.
 
 ### Custom path
 
@@ -219,7 +244,7 @@ node scripts/simulate-multiplayer-game.mjs
 | Doc | Description |
 |-----|-------------|
 | [`docs/figma.md`](docs/figma.md) | Import SVG diagrams into Figma Free; UI flow, wireframes, design tokens |
-| [`docs/white-label.md`](docs/white-label.md) | Logo + color scheme white-label planning and implementation checklist |
+| [`docs/white-label.md`](docs/white-label.md) | Logo + color scheme white-label (build-time Vite env is implemented) |
 
 Diagram source files: [`design/figma/`](design/figma/).
 
