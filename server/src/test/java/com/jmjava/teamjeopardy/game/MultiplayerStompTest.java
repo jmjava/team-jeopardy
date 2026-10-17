@@ -23,6 +23,7 @@ import org.springframework.web.socket.sockjs.client.SockJsClient;
 import org.springframework.web.socket.sockjs.client.Transport;
 
 import java.lang.reflect.Type;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.BlockingQueue;
@@ -114,6 +115,115 @@ class MultiplayerStompTest {
         hostInbox.disconnect();
         playerInbox.disconnect();
         p2Inbox.disconnect();
+        displayInbox.disconnect();
+    }
+
+    @Test
+    void stompTablePlaysCompactBoardToFinished() throws Exception {
+        JsonNode saved = post("/api/question-bank", Map.of(
+                "title", "STOMP compact Friday",
+                "sourceKind", "manual",
+                "sourceKey", "manual:stomp-compact-" + System.nanoTime(),
+                "categories", List.of(
+                        Map.of(
+                                "title", "DEV: Patterns",
+                                "clues", List.of(
+                                        Map.of("value", 200, "prompt", "Reusable logic",
+                                                "response", "What is a composable?", "dailyDouble", false),
+                                        Map.of("value", 400, "prompt", "Daily Double factory",
+                                                "response", "What is Factory Method?", "dailyDouble", true)
+                                )
+                        ),
+                        Map.of(
+                                "title", "QA: Risk",
+                                "clues", List.of(
+                                        Map.of("value", 200, "prompt", "Who cannot buzz",
+                                                "response", "What is an unadmitted player?", "dailyDouble", false),
+                                        Map.of("value", 400, "prompt", "End of the match",
+                                                "response", "What is FINISHED?", "dailyDouble", false)
+                                )
+                        )
+                )
+        ));
+
+        JsonNode created = post("/api/rooms", Map.of("hostName", "Pat Host", "title", "STOMP Full"));
+        String roomId = created.path("snapshot").path("roomId").asText();
+        String code = created.path("snapshot").path("code").asText();
+        String hostId = created.path("hostPlayerId").asText();
+        String p1Id = post("/api/rooms/join", Map.of("code", code, "displayName", "Alex", "teamName", "Blue Owls"))
+                .path("playerId").asText();
+        String p2Id = post("/api/rooms/join", Map.of("code", code, "displayName", "Sam", "teamName", "Red Foxes"))
+                .path("playerId").asText();
+
+        SnapshotInbox hostInbox = connect("/topic/room." + roomId + ".host");
+        SnapshotInbox playerInbox = connect("/topic/room." + roomId);
+        SnapshotInbox displayInbox = connect("/topic/room." + roomId);
+        Thread.sleep(250);
+
+        post("/api/rooms/load-board", Map.of(
+                "roomId", roomId,
+                "playerId", hostId,
+                "savedBoardId", saved.path("id").asText()
+        ));
+        await(hostInbox, s -> s.board() != null && s.board().categories() != null && s.board().categories().size() == 2);
+
+        send(hostInbox.session, roomId, new GameAction("ADMIT_ALL", hostId, null, Map.of()));
+        await(hostInbox, s -> s.players().stream().filter(p -> !p.host() && p.admitted()).count() >= 2);
+        send(hostInbox.session, roomId, new GameAction("START", hostId, null, Map.of()));
+        GameSnapshot board = await(hostInbox, s -> s.phase() == GamePhase.BOARD);
+
+        Map<String, Integer> expected = new HashMap<>();
+        expected.put("Blue Owls", 0);
+        expected.put("Red Foxes", 0);
+        List<RealPlayHttpSupport.ClueRef> order = RealPlayHttpSupport.jeopardyOrder(board);
+        assertEquals(4, order.size());
+
+        GameSnapshot phase = board;
+        for (int i = 0; i < order.size(); i++) {
+            RealPlayHttpSupport.ClueRef clue = order.get(i);
+            send(hostInbox.session, roomId, new GameAction("SELECT_CLUE", hostId, null, Map.of("clueId", clue.id())));
+            GameSnapshot hostPreview = await(hostInbox, s -> s.phase() == GamePhase.HOST_PREVIEW
+                    && s.activeClue() != null && clue.id().equals(s.activeClue().clueId()));
+            GameSnapshot publicPreview = await(displayInbox, s -> s.phase() == GamePhase.HOST_PREVIEW
+                    && s.revision() >= hostPreview.revision());
+            assertNotNull(hostPreview.activeClue().prompt());
+            assertNull(publicPreview.activeClue().prompt());
+            if (clue.dailyDouble()) {
+                assertTrue(hostPreview.activeClue().dailyDouble());
+                assertTrue(publicPreview.activeClue().dailyDouble());
+            }
+
+            send(hostInbox.session, roomId, new GameAction("OPEN_BUZZERS", hostId, null, Map.of()));
+            await(playerInbox, s -> s.phase() == GamePhase.CLUE_OPEN);
+
+            if (i % 2 == 0) {
+                send(playerInbox.session, roomId, new GameAction("BUZZ", p1Id, null, Map.of()));
+                await(hostInbox, s -> s.phase() == GamePhase.BUZZ_LOCKED);
+                send(hostInbox.session, roomId, new GameAction("JUDGE", hostId, null, Map.of("correct", false)));
+                await(playerInbox, s -> s.phase() == GamePhase.CLUE_OPEN);
+                expected.merge("Blue Owls", -clue.value(), Integer::sum);
+                send(playerInbox.session, roomId, new GameAction("BUZZ", p2Id, null, Map.of()));
+                await(hostInbox, s -> s.phase() == GamePhase.BUZZ_LOCKED
+                        && p2Id.equals(s.activeClue().buzzedPlayerId()));
+                send(hostInbox.session, roomId, new GameAction("JUDGE", hostId, null, Map.of("correct", true)));
+                expected.merge("Red Foxes", clue.value(), Integer::sum);
+            } else {
+                send(hostInbox.session, roomId, new GameAction("REVEAL", hostId, null, Map.of()));
+            }
+
+            await(displayInbox, s -> s.phase() == GamePhase.ANSWER_REVEALED && s.activeClue().responseVisible());
+            send(hostInbox.session, roomId, new GameAction("RETURN_BOARD", hostId, null, Map.of()));
+            phase = await(hostInbox, s -> s.phase() == GamePhase.BOARD || s.phase() == GamePhase.FINISHED);
+        }
+
+        assertEquals(GamePhase.FINISHED, phase.phase());
+        assertTrue(phase.cells().stream().allMatch(BoardCellState::answered));
+        Map<String, Integer> actual = new HashMap<>();
+        phase.teams().forEach(t -> actual.put(t.name(), t.score()));
+        assertEquals(expected, actual);
+
+        hostInbox.disconnect();
+        playerInbox.disconnect();
         displayInbox.disconnect();
     }
 

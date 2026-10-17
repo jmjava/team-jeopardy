@@ -1,7 +1,9 @@
 package com.jmjava.teamjeopardy.api;
 
+import com.jmjava.teamjeopardy.game.ActionReceipt;
 import com.jmjava.teamjeopardy.game.GameAction;
 import com.jmjava.teamjeopardy.game.GameRoomService;
+import com.jmjava.teamjeopardy.game.GameSnapshot;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.messaging.handler.annotation.DestinationVariable;
@@ -15,7 +17,9 @@ import org.springframework.web.server.ResponseStatusException;
  * Clients send actions to /app/room/{roomId}/action.
  * Public/shared displays subscribe to /topic/room.{roomId}.
  * Moderator consoles also subscribe to /topic/room.{roomId}.host for full clue text.
- * Action rejections are published to /topic/room.{roomId}.errors (session stays open).
+ * Action rejections stay on the STOMP session. Typed receipts go to
+ * /topic/room.{roomId}.player.{playerId}; a Map payload also goes to
+ * /topic/room.{roomId}.errors.
  */
 @Controller
 public class GameWsController {
@@ -32,26 +36,31 @@ public class GameWsController {
 
     @MessageMapping("/room/{roomId}/action")
     public void handleAction(@DestinationVariable String roomId, @Payload GameAction action) {
+        String playerId = action == null ? null : action.playerId();
+        String type = action == null ? null : action.type();
         try {
-            gameRoomService.applyAction(roomId, action);
+            GameSnapshot applied = gameRoomService.applyAction(roomId, action);
             broadcaster.broadcast(roomId);
+            broadcaster.sendReceipt(ActionReceipt.accepted(playerId, type, applied));
         } catch (ResponseStatusException ex) {
             // Keep the STOMP session open: a lost buzz race must not kick the player.
-            log.info("Rejected {} in room {}: {}", action == null ? null : action.type(), roomId, ex.getReason());
-            broadcaster.sendActionError(
-                    roomId,
-                    action == null ? null : action.playerId(),
-                    action == null ? null : action.type(),
-                    ex.getReason()
-            );
+            log.info("Rejected {} in room {}: {}", type, roomId, ex.getReason());
+            GameSnapshot current = snapshotOrNull(roomId);
+            broadcaster.sendReceipt(ActionReceipt.rejected(roomId, playerId, type, ex.getReason(), current));
+            broadcaster.sendActionError(roomId, playerId, type, ex.getReason());
         } catch (RuntimeException ex) {
-            log.warn("Failed {} in room {}: {}", action == null ? null : action.type(), roomId, ex.getMessage());
-            broadcaster.sendActionError(
-                    roomId,
-                    action == null ? null : action.playerId(),
-                    action == null ? null : action.type(),
-                    "Action failed"
-            );
+            log.warn("Failed {} in room {}: {}", type, roomId, ex.getMessage());
+            GameSnapshot current = snapshotOrNull(roomId);
+            broadcaster.sendReceipt(ActionReceipt.rejected(roomId, playerId, type, "Action failed", current));
+            broadcaster.sendActionError(roomId, playerId, type, "Action failed");
+        }
+    }
+
+    private GameSnapshot snapshotOrNull(String roomId) {
+        try {
+            return gameRoomService.publicSnapshot(roomId);
+        } catch (RuntimeException ignored) {
+            return null;
         }
     }
 }

@@ -10,6 +10,8 @@ const WS_URL = import.meta.env.VITE_WS_URL || '/ws'
  *   isHost?: boolean,
  *   onSnapshot: Function,
  *   onStatus?: Function,
+ *   onReady?: Function,
+ *   onReceipt?: Function,
  *   onError?: Function
  * }} opts
  */
@@ -19,6 +21,8 @@ export function connectGameSocket({
   isHost = false,
   onSnapshot,
   onStatus,
+  onReady,
+  onReceipt,
   onError
 }) {
   const client = new Client({
@@ -46,6 +50,15 @@ export function connectGameSocket({
           }
         })
       }
+      if (playerId) {
+        client.subscribe(`/topic/room.${roomId}.player.${playerId}`, (message) => {
+          try {
+            onReceipt?.(JSON.parse(message.body))
+          } catch (err) {
+            console.error('Failed to parse action receipt', err)
+          }
+        })
+      }
       client.subscribe(`/topic/room.${roomId}.errors`, (message) => {
         try {
           const body = JSON.parse(message.body)
@@ -55,6 +68,9 @@ export function connectGameSocket({
           console.error('Failed to parse action error', err)
         }
       })
+      // Pull current state after subscribe so a dropped client does not wait
+      // for the next host action to catch up.
+      onReady?.()
     },
     onDisconnect: () => onStatus?.('disconnected'),
     onStompError: () => onStatus?.('error'),

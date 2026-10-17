@@ -19,6 +19,8 @@ public record GameSnapshot(
         List<Player> players,
         List<BoardCellState> cells,
         /** Moderator hints used when generating this board (may be blank). */
-        String questionHints
+        String questionHints,
+        /** Players who missed this clue and cannot buzz again until the next one. */
+        List<String> lockedOutPlayerIds
 ) {
 }

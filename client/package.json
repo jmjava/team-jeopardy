@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:e2e": "playwright test",
-    "test:e2e:install": "playwright install chromium"
+    "test:e2e:install": "playwright install chromium",
+    "test:sim": "SKIP_GITHUB=1 node ../scripts/simulate-multiplayer-game.mjs"
   },
   "dependencies": {
     "@stomp/stompjs": "^7.0.0",

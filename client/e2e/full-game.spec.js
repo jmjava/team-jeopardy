@@ -100,6 +100,38 @@ test('moderator picks sample, sets hints, admits, full clue loop', async ({ brow
   await host.getByRole('button', { name: 'Back to board', exact: true }).click()
   await expect(host.locator('.board')).toBeVisible()
 
+  const blue = host.locator('.team').filter({ hasText: 'Blue Owls' }).locator('strong')
+  const red = host.locator('.team').filter({ hasText: 'Red Foxes' }).locator('strong')
+  await expect(blue).toHaveText('$-200')
+  await expect(red).toHaveText('$200')
+
+  // Second clue: nobody knows it — host reveals. Scoreboard stays put.
+  await host.locator('button.cell:not(.answered)').first().click()
+  await expect(host.getByRole('button', { name: 'Show clue & open buzzers' })).toBeVisible({
+    timeout: 15_000
+  })
+  await host.getByRole('button', { name: 'Show clue & open buzzers' }).click()
+  await expect(p1.getByRole('button', { name: 'Buzz' })).toBeVisible({ timeout: 15_000 })
+  await host.getByRole('button', { name: 'Reveal answer' }).click()
+  await expect(host.getByRole('button', { name: 'Back to board', exact: true })).toBeVisible({
+    timeout: 15_000
+  })
+  await host.getByRole('button', { name: 'Back to board', exact: true }).click()
+  await expect(blue).toHaveText('$-200')
+  await expect(red).toHaveText('$200')
+
+  // Third clue: Alex converts on the first buzz.
+  await host.locator('button.cell:not(.answered)').first().click()
+  await host.getByRole('button', { name: 'Show clue & open buzzers' }).click()
+  await expect(p1.getByRole('button', { name: 'Buzz' })).toBeVisible({ timeout: 15_000 })
+  await p1.getByRole('button', { name: 'Buzz' }).click({ force: true })
+  await expect(host.locator('.buzz-banner h2')).toHaveText('Alex')
+  await host.getByRole('button', { name: 'Correct', exact: true }).click()
+  await host.getByRole('button', { name: 'Back to board', exact: true }).click()
+  await expect(host.locator('.board')).toBeVisible()
+  await expect(blue).not.toHaveText('$-200')
+  await expect(red).toHaveText('$200')
+
   await hostCtx.close()
   await p1Ctx.close()
   await p2Ctx.close()
