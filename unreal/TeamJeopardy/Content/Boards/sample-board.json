@@ -1,0 +1,311 @@
+{
+  "title": "Team Jeopardy",
+  "categories": [
+    {
+      "id": "patterns",
+      "title": "DEV: DESIGN PATTERNS",
+      "clues": [
+        {
+          "id": "patterns-200",
+          "value": 200,
+          "prompt": "PaymentStrategy.java declares one interface and three checkout implementations.",
+          "response": "What is the Strategy pattern?",
+          "explanation": "JavaDesignPatternStrategy records a Strategy fact when one interface has several implementations.",
+          "sourcePath": "src/payment/PaymentStrategy.java",
+          "dailyDouble": false
+        },
+        {
+          "id": "patterns-400",
+          "value": 400,
+          "prompt": "Ingest matched this creational pattern four times: a type builds itself through chained setters.",
+          "response": "What is the Builder pattern?",
+          "explanation": "The Java pattern strategy flags Builder when construction is a chain of with-methods.",
+          "sourcePath": "src/order/OrderBuilder.java",
+          "dailyDouble": false
+        },
+        {
+          "id": "patterns-600",
+          "value": 600,
+          "prompt": "A private constructor and a single shared instance showed up in the graph.",
+          "response": "What is the Singleton pattern?",
+          "explanation": "Singleton is one of the Java design-pattern facts, alongside Factory and Observer.",
+          "sourcePath": "src/config/AppConfig.java",
+          "dailyDouble": false
+        },
+        {
+          "id": "patterns-800",
+          "value": 800,
+          "prompt": "A Vue file exports a setup function that three views import and call.",
+          "response": "What is a composable?",
+          "explanation": "VueDesignPatternStrategy treats shared setup functions as the Composable pattern.",
+          "sourcePath": "src/composables/useCart.js",
+          "dailyDouble": false
+        },
+        {
+          "id": "patterns-1000",
+          "value": 1000,
+          "prompt": "This Pinia module owns cart state and is imported by the checkout views.",
+          "response": "What is a store?",
+          "explanation": "The Vue strategy maps Pinia and Vuex modules to the store pattern.",
+          "sourcePath": "src/stores/cart.js",
+          "dailyDouble": false
+        }
+      ]
+    },
+    {
+      "id": "types",
+      "title": "DEV: NAME THAT TYPE",
+      "clues": [
+        {
+          "id": "types-200",
+          "value": 200,
+          "prompt": "This is the only public class declared in OrderService.java.",
+          "response": "What is OrderService?",
+          "explanation": "Name-that-type clues use the primary type in a scanned source file.",
+          "sourcePath": "src/order/OrderService.java",
+          "dailyDouble": false
+        },
+        {
+          "id": "types-400",
+          "value": 400,
+          "prompt": "Two classes implement this interface, and the checkout flow depends on it.",
+          "response": "What is PaymentGateway?",
+          "explanation": "IMPLEMENTS edges point at the shared supertype.",
+          "sourcePath": "src/payment/PaymentGateway.java",
+          "dailyDouble": false
+        },
+        {
+          "id": "types-600",
+          "value": 600,
+          "prompt": "This @RestController owns routes that start with /api/rooms.",
+          "response": "What is RoomController?",
+          "explanation": "API-surface clues name the type that declares the route.",
+          "sourcePath": "src/game/RoomController.java",
+          "dailyDouble": false
+        },
+        {
+          "id": "types-800",
+          "value": 800,
+          "prompt": "This record holds the prompt, the response, and the dollar value for one square.",
+          "response": "What is Clue?",
+          "explanation": "The quiz model is a Clue record inside a Category, inside a Board.",
+          "sourcePath": "quiz/Clue.java",
+          "dailyDouble": false
+        },
+        {
+          "id": "types-1000",
+          "value": 1000,
+          "prompt": "During this game phase the host can read the clue and everyone else still sees a teaser.",
+          "response": "What is HOST_PREVIEW?",
+          "explanation": "GamePhase.HOST_PREVIEW is the beat before buzzers open.",
+          "sourcePath": "game/GamePhase.java",
+          "dailyDouble": false
+        }
+      ]
+    },
+    {
+      "id": "api",
+      "title": "DEV: API SURFACE",
+      "clues": [
+        {
+          "id": "api-200",
+          "value": 200,
+          "prompt": "This request installs a saved question-bank board into a room.",
+          "response": "What is POST /api/rooms/load-board?",
+          "explanation": "load-board copies a stored board into the in-memory room.",
+          "sourcePath": "api/rooms/load-board",
+          "dailyDouble": false
+        },
+        {
+          "id": "api-400",
+          "value": 400,
+          "prompt": "The Vue client uses this messaging layer for snapshots and buzzes.",
+          "response": "What is STOMP over WebSockets?",
+          "explanation": "Rooms push a monotonic revision on a STOMP topic.",
+          "sourcePath": "client/src/realtime.js",
+          "dailyDouble": false
+        },
+        {
+          "id": "api-600",
+          "value": 600,
+          "prompt": "A player presses this key to buzz while the clue is open.",
+          "response": "What is Space?",
+          "explanation": "The clue stage listens for Space when buzzers are open.",
+          "sourcePath": "client/src/components/ClueStage.vue",
+          "dailyDouble": false
+        },
+        {
+          "id": "api-800",
+          "value": 800,
+          "prompt": "This GameRoomService call adds or subtracts the clue value.",
+          "response": "What is judge?",
+          "explanation": "Correct marks the clue answered and reveals the response. A miss reopens the buzzers.",
+          "sourcePath": "game/GameRoomService.java",
+          "dailyDouble": false
+        },
+        {
+          "id": "api-1000",
+          "value": 1000,
+          "prompt": "The optional OpenAI enricher may rewrite the prompt, but it must leave this field alone.",
+          "response": "What is the response?",
+          "explanation": "Answers stay fixed. Polish is prompt and explanation text only.",
+          "sourcePath": "quiz/openai",
+          "dailyDouble": false
+        }
+      ]
+    },
+    {
+      "id": "matrix",
+      "title": "QA: TEST MATRIX",
+      "clues": [
+        {
+          "id": "matrix-200",
+          "value": 200,
+          "prompt": "Two classes implement DiscountPolicy. The matrix is aimed at this supertype.",
+          "response": "What is DiscountPolicy?",
+          "explanation": "QA clues target interfaces with two or more implementors.",
+          "sourcePath": "src/pricing/DiscountPolicy.java",
+          "dailyDouble": false
+        },
+        {
+          "id": "matrix-400",
+          "value": 400,
+          "prompt": "A boundary row for a board whose category list is empty.",
+          "response": "What is zero categories?",
+          "explanation": "The test matrix includes the empty-board boundary.",
+          "sourcePath": "quiz/Board.java",
+          "dailyDouble": false
+        },
+        {
+          "id": "matrix-600",
+          "value": 600,
+          "prompt": "On main, a Daily Double is shown as this rather than a typed wager.",
+          "response": "What is a badge?",
+          "explanation": "clue.dailyDouble is a badge on a normal buzz clue. Typed wagers are the T16 leftover.",
+          "sourcePath": "quiz/Clue.java",
+          "dailyDouble": false
+        },
+        {
+          "id": "matrix-800",
+          "value": 800,
+          "prompt": "Four clients buzz on the same revision. The suite expects this many winners.",
+          "response": "What is one?",
+          "explanation": "Buzzes are serialized on the room lock. Losers stay connected and get a rejection.",
+          "sourcePath": "game/GameRoomService.java",
+          "dailyDouble": true
+        },
+        {
+          "id": "matrix-1000",
+          "value": 1000,
+          "prompt": "The client drops a late snapshot by comparing this monotonic field.",
+          "response": "What is revision?",
+          "explanation": "Every snapshot carries a revision. A reconnect GET-resyncs instead of waiting.",
+          "sourcePath": "game/GameRoom.java",
+          "dailyDouble": false
+        }
+      ]
+    },
+    {
+      "id": "blast",
+      "title": "QA: BLAST RADIUS",
+      "clues": [
+        {
+          "id": "blast-200",
+          "value": 200,
+          "prompt": "Changing the clue prompt touches the host preview and this projector view.",
+          "response": "What is the shared display?",
+          "explanation": "The shared display is the ?view=display route.",
+          "sourcePath": "client/src/components/SharedDisplay.vue",
+          "dailyDouble": false
+        },
+        {
+          "id": "blast-400",
+          "value": 400,
+          "prompt": "A wrong answer locks that player out for the rest of this.",
+          "response": "What is the clue?",
+          "explanation": "Lockout clears when the host returns to the board.",
+          "sourcePath": "game/GameRoomService.java",
+          "dailyDouble": false
+        },
+        {
+          "id": "blast-600",
+          "value": 600,
+          "prompt": "Rooms live here, so a server restart drops every seat.",
+          "response": "What is memory?",
+          "explanation": "Rooms are in-memory. The question bank is the durable SQLite copy.",
+          "sourcePath": "game/GameRoomService.java",
+          "dailyDouble": false
+        },
+        {
+          "id": "blast-800",
+          "value": 800,
+          "prompt": "A successful ingest writes the board here so a moderator can reload it without scanning again.",
+          "response": "What is the question bank?",
+          "explanation": "SQLite stores boards and flattened clues. The response includes savedBoardId.",
+          "sourcePath": "persistence/question-bank",
+          "dailyDouble": false
+        },
+        {
+          "id": "blast-1000",
+          "value": 1000,
+          "prompt": "Judging a buzz incorrect reopens the buzzers and clears this person.",
+          "response": "What is the buzzed player?",
+          "explanation": "The miss path nulls the buzz, records a lockout, and sets CLUE_OPEN.",
+          "sourcePath": "game/GameRoomService.java",
+          "dailyDouble": false
+        }
+      ]
+    },
+    {
+      "id": "modules",
+      "title": "MODULES",
+      "clues": [
+        {
+          "id": "modules-200",
+          "value": 200,
+          "prompt": "Maven ingest treats this filename as the root of a module.",
+          "response": "What is pom.xml?",
+          "explanation": "pom.xml marks a Maven module: dependencies, plugins, and Java sources.",
+          "sourcePath": "pom.xml",
+          "dailyDouble": false
+        },
+        {
+          "id": "modules-400",
+          "value": 400,
+          "prompt": "This Gradle file lists the projects included in a multi-project build.",
+          "response": "What is settings.gradle?",
+          "explanation": "settings.gradle or settings.gradle.kts is the multi-project marker.",
+          "sourcePath": "settings.gradle",
+          "dailyDouble": false
+        },
+        {
+          "id": "modules-600",
+          "value": 600,
+          "prompt": "Vue single-file components are indexed when a tree contains .vue files and this manifest.",
+          "response": "What is package.json?",
+          "explanation": "The Vue ingester reads package.json scripts and dependencies with the SFCs.",
+          "sourcePath": "package.json",
+          "dailyDouble": false
+        },
+        {
+          "id": "modules-800",
+          "value": 800,
+          "prompt": "Python ingest accepts requirements.txt or this project file.",
+          "response": "What is pyproject.toml?",
+          "explanation": "Python indexing covers files, imports, classes, and callables.",
+          "sourcePath": "pyproject.toml",
+          "dailyDouble": false
+        },
+        {
+          "id": "modules-1000",
+          "value": 1000,
+          "prompt": "This optional Java module system is skipped when its markers are absent.",
+          "response": "What is OSGi?",
+          "explanation": "OSGi parsing is extracted from skgraph and stays optional.",
+          "sourcePath": "META-INF/MANIFEST.MF",
+          "dailyDouble": false
+        }
+      ]
+    }
+  ]
+}

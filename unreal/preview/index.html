@@ -1,0 +1,670 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Team Jeopardy — Unreal studio</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Source+Sans+3:wght@400;600;700&display=swap" rel="stylesheet" />
+    <style>
+      :root {
+        --ink: #0f1b33;
+        --gold: #f0d060;
+        --gold-deep: #c9a227;
+        --board: #0b3d91;
+        --board-cell: #1152c0;
+        --board-border: #071833;
+        --cell-answered: #0a274f;
+        --danger: #e85d4c;
+        --ok: #3ecf8e;
+        --text: #f4f7ff;
+        --muted: #a9b7d4;
+        --answer-text: #b9f5d4;
+        --bg: #071225;
+        --bg-mid: #10284f;
+        color: var(--text);
+        font-family: "Source Sans 3", "Segoe UI", sans-serif;
+        background: var(--bg);
+      }
+
+      * { box-sizing: border-box; }
+
+      html, body {
+        margin: 0;
+        height: 100%;
+      }
+
+      body {
+        min-height: 100vh;
+        min-height: 100dvh;
+        background:
+          radial-gradient(1000px 480px at 12% -10%, rgba(61, 139, 255, 0.35), transparent 55%),
+          radial-gradient(760px 420px at 90% 0%, rgba(240, 208, 96, 0.16), transparent 50%),
+          linear-gradient(160deg, var(--bg) 0%, var(--bg-mid) 46%, var(--bg) 100%);
+      }
+
+      button, input { font: inherit; }
+
+      button {
+        cursor: pointer;
+        border: 0;
+        border-radius: 10px;
+        padding: 0.55rem 0.85rem;
+        background: linear-gradient(180deg, var(--gold), var(--gold-deep));
+        color: #1a1400;
+        font-weight: 700;
+      }
+
+      button:focus-visible,
+      .cell:focus-visible {
+        outline: 2px solid var(--gold);
+        outline-offset: 2px;
+      }
+
+      button.secondary {
+        background: transparent;
+        color: var(--text);
+        border: 1px solid rgba(244, 247, 255, 0.25);
+      }
+
+      button.ok {
+        background: linear-gradient(180deg, #63e5a8, var(--ok));
+        color: #042416;
+      }
+
+      button.danger {
+        background: linear-gradient(180deg, #ff7b6c, var(--danger));
+        color: white;
+      }
+
+      button:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+      }
+
+      .studio {
+        height: 100vh;
+        height: 100dvh;
+        display: grid;
+        grid-template-rows: auto minmax(0, 1fr) auto;
+        padding: 18px 22px 14px;
+        gap: 12px;
+      }
+
+      header {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 8px 24px;
+        align-items: end;
+      }
+
+      .eyebrow {
+        margin: 0;
+        color: var(--gold);
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        font-size: 0.72rem;
+        font-weight: 700;
+      }
+
+      h1 {
+        margin: 0;
+        font-family: "Bebas Neue", Impact, sans-serif;
+        font-size: clamp(2rem, 4vw, 3.2rem);
+        letter-spacing: 0.04em;
+        font-weight: 400;
+        line-height: 0.9;
+      }
+
+      .phase {
+        margin: 4px 0 0;
+        color: var(--muted);
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        font-size: 0.75rem;
+      }
+
+      .scores {
+        display: flex;
+        gap: 8px;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+
+      .scores li {
+        min-width: 8.5rem;
+        padding: 0.45rem 0.75rem;
+        border-radius: 12px;
+        background: color-mix(in srgb, var(--team) 16%, rgba(8, 18, 36, 0.92));
+        border: 1px solid color-mix(in srgb, var(--team) 55%, transparent);
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        align-items: baseline;
+      }
+
+      .scores li.buzzed {
+        box-shadow: 0 0 0 2px color-mix(in srgb, var(--team) 75%, white);
+      }
+
+      .scores li.locked { opacity: 0.55; }
+
+      .scores strong {
+        font-family: "Bebas Neue", Impact, sans-serif;
+        color: var(--gold);
+        font-size: 1.45rem;
+        font-weight: 400;
+        letter-spacing: 0.04em;
+      }
+
+      .stage {
+        position: relative;
+        min-height: 0;
+        border-radius: 28px;
+        overflow: hidden;
+        background:
+          radial-gradient(420px 180px at 50% 0%, rgba(240, 208, 96, 0.16), transparent 70%),
+          radial-gradient(520px 280px at 18% 10%, rgba(61, 139, 255, 0.22), transparent 70%),
+          linear-gradient(180deg, #0a1c38 0%, #071225 70%);
+        box-shadow: inset 0 0 0 1px rgba(244, 247, 255, 0.06), 0 24px 60px rgba(0, 0, 0, 0.35);
+      }
+
+      .spot {
+        position: absolute;
+        width: 38%;
+        height: 70%;
+        top: -10%;
+        background: radial-gradient(ellipse at center, rgba(255, 244, 214, 0.16), transparent 68%);
+        pointer-events: none;
+      }
+
+      .spot.left { left: 4%; transform: rotate(12deg); }
+      .spot.right { right: 4%; transform: rotate(-12deg); }
+
+      .camera {
+        position: absolute;
+        inset: 28px 28px 78px;
+        perspective: 1600px;
+      }
+
+      .set {
+        height: 100%;
+        transform: rotateX(8deg);
+        transform-style: preserve-3d;
+        display: grid;
+        grid-template-rows: minmax(0, 1fr) auto;
+        gap: 14px;
+      }
+
+      .board-slot { position: relative; min-height: 0; }
+
+      .board {
+        height: 100%;
+        display: grid;
+        grid-template-columns: repeat(var(--cols), minmax(0, 1fr));
+        gap: 8px;
+      }
+
+      .category {
+        display: grid;
+        grid-template-rows: 0.82fr repeat(5, 1fr);
+        gap: 8px;
+        min-height: 0;
+      }
+
+      .cat,
+      .cell {
+        border: 3px solid var(--board-border);
+        background: linear-gradient(180deg, var(--board-cell), var(--board));
+        box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.08);
+        display: grid;
+        place-items: center;
+        text-align: center;
+        padding: 4px;
+        min-height: 0;
+      }
+
+      .cat {
+        color: white;
+        font-family: "Bebas Neue", Impact, sans-serif;
+        letter-spacing: 0.04em;
+        font-size: clamp(0.72rem, 1.3vw, 1.05rem);
+        line-height: 1.05;
+      }
+
+      .cell {
+        width: 100%;
+        border-radius: 0;
+        color: var(--gold);
+        font-family: "Bebas Neue", Impact, sans-serif;
+        font-size: clamp(1.2rem, 2.4vw, 2rem);
+        letter-spacing: 0.03em;
+      }
+
+      .cell:hover:not(:disabled) { filter: brightness(1.12); }
+
+      .cell:disabled { opacity: 1; }
+
+      .cell.answered {
+        background: var(--cell-answered);
+        color: transparent;
+      }
+
+      .wall {
+        position: absolute;
+        inset: 0;
+        display: grid;
+        align-content: center;
+        justify-items: center;
+        gap: 12px;
+        padding: 28px 32px;
+        text-align: center;
+        background: rgba(10, 24, 48, 0.94);
+        border: 1px solid rgba(244, 247, 255, 0.08);
+        box-shadow: 0 24px 60px rgba(0, 0, 0, 0.35);
+      }
+
+      .wall[data-open="true"] {
+        box-shadow: 0 0 0 1px rgba(240, 208, 96, 0.38), 0 24px 60px rgba(0, 0, 0, 0.35);
+      }
+
+      .wall[hidden] { display: none; }
+
+      .banner {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px 16px;
+        justify-content: center;
+        align-items: baseline;
+        font-family: "Bebas Neue", Impact, sans-serif;
+        letter-spacing: 0.05em;
+      }
+
+      .banner .value { color: var(--gold); font-size: clamp(1.8rem, 4vw, 3rem); }
+
+      .banner .cat-name { font-size: clamp(1.2rem, 2.5vw, 2rem); }
+
+      .dd {
+        color: #1a1400;
+        background: var(--gold);
+        border-radius: 999px;
+        padding: 2px 10px;
+        font-style: normal;
+        letter-spacing: 0.08em;
+        font-size: 0.95rem;
+      }
+
+      .kicker {
+        margin: 0;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        font-size: 0.75rem;
+        font-weight: 700;
+        color: var(--gold);
+      }
+
+      .wall h2 {
+        margin: 0;
+        font-family: "Bebas Neue", Impact, sans-serif;
+        font-weight: 400;
+        letter-spacing: 0.04em;
+        font-size: clamp(2rem, 5vw, 4.2rem);
+        line-height: 0.95;
+      }
+
+      .prompt, .explanation, .source {
+        margin: 0;
+        max-width: 46rem;
+        white-space: pre-wrap;
+      }
+
+      .prompt { font-size: clamp(1.15rem, 2.4vw, 1.8rem); line-height: 1.35; }
+
+      .answer h3 {
+        margin: 0;
+        color: var(--answer-text);
+        font-size: clamp(1.4rem, 3vw, 2.2rem);
+      }
+
+      .explanation, .source { color: var(--muted); }
+
+      .buzz-name { color: var(--buzz, var(--gold)); }
+
+      .podiums {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 18px;
+        width: min(680px, 80%);
+        margin: 0 auto;
+        transform: translateZ(70px);
+      }
+
+      .podium {
+        display: grid;
+        justify-items: center;
+        gap: 6px;
+      }
+
+      .podium .cap {
+        width: 100%;
+        padding: 8px 10px 6px;
+        border-radius: 8px 8px 2px 2px;
+        background: linear-gradient(180deg, color-mix(in srgb, var(--team) 80%, white), var(--team));
+        color: #0f1b33;
+        text-align: center;
+      }
+
+      .podium .cap span {
+        display: block;
+        font-size: 0.78rem;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .podium .cap strong {
+        font-family: "Bebas Neue", Impact, sans-serif;
+        font-size: 1.8rem;
+        font-weight: 400;
+        letter-spacing: 0.03em;
+      }
+
+      .podium .stem {
+        width: 42%;
+        height: 28px;
+        background: linear-gradient(180deg, #16315f, #071225);
+        border-radius: 0 0 6px 6px;
+      }
+
+      .podium.buzzed .cap {
+        box-shadow: 0 0 0 2px white, 0 10px 24px rgba(0, 0, 0, 0.35);
+      }
+
+      .podium.locked { opacity: 0.45; }
+
+      .floor {
+        position: absolute;
+        left: 8%;
+        right: 8%;
+        bottom: 0;
+        height: 70px;
+        background: radial-gradient(ellipse at center, rgba(17, 82, 192, 0.35), transparent 70%);
+        pointer-events: none;
+      }
+
+      footer {
+        display: flex;
+        justify-content: space-between;
+        gap: 16px;
+        align-items: center;
+      }
+
+      #hint {
+        margin: 0;
+        color: var(--lede, #d7e2f8);
+        min-height: 1.4em;
+      }
+
+      .keys { display: flex; flex-wrap: wrap; gap: 8px; }
+
+      .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
+      }
+
+      @media (max-width: 800px) {
+        header { grid-template-columns: 1fr; }
+        .studio { padding: 12px; }
+        .camera { inset: 12px 12px 64px; }
+        footer { align-items: flex-start; flex-direction: column; }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .set { transform: none; }
+        .podiums { transform: none; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="studio" id="studio">
+      <header>
+        <div>
+          <p class="eyebrow">Unreal studio · audience camera</p>
+          <h1 id="title">Team Jeopardy</h1>
+          <p class="phase" id="phase">Lobby</p>
+        </div>
+        <ol class="scores" id="scores" aria-label="Scores"></ol>
+      </header>
+
+      <div class="stage">
+        <div class="spot left"></div>
+        <div class="spot right"></div>
+        <div class="camera">
+          <div class="set">
+            <div class="board-slot">
+              <div class="board" id="board" role="grid" aria-label="Team Jeopardy board"></div>
+              <div class="wall" id="wall" role="region" aria-live="polite"></div>
+            </div>
+            <div class="podiums" id="podiums"></div>
+          </div>
+        </div>
+        <div class="floor"></div>
+      </div>
+
+      <footer>
+        <p id="hint"></p>
+        <div class="keys">
+          <button type="button" id="act-start">Take the stage</button>
+          <button type="button" id="act-open" class="ok">Open buzzers</button>
+          <button type="button" id="act-buzz">Buzz Platform</button>
+          <button type="button" id="act-correct" class="ok">Correct</button>
+          <button type="button" id="act-wrong" class="danger">Incorrect</button>
+          <button type="button" id="act-reveal" class="secondary">Reveal</button>
+          <button type="button" id="act-back" class="secondary">Back</button>
+        </div>
+      </footer>
+    </div>
+    <p class="sr-only" id="live" aria-live="assertive"></p>
+    <script src="match.js"></script>
+    <script>
+      var TEAMS = [
+        { id: "platform", name: "Platform", color: "#E8C547" },
+        { id: "qa", name: "QA", color: "#3D8BFF" },
+        { id: "clients", name: "Clients", color: "#E85D4C" }
+      ];
+
+      var match = null;
+
+      function money(value) {
+        return window.TJMatch.formatMoney(value);
+      }
+
+      function render() {
+        var view = match.snapshot();
+        document.getElementById("studio").dataset.phase = view.phase;
+        document.getElementById("title").textContent = view.boardTitle || "Team Jeopardy";
+        document.getElementById("phase").textContent = view.phaseLabel;
+        document.getElementById("hint").textContent = view.hint;
+
+        var scores = document.getElementById("scores");
+        scores.replaceChildren();
+        var podiums = document.getElementById("podiums");
+        podiums.replaceChildren();
+        view.teams.forEach(function (team, index) {
+          var li = document.createElement("li");
+          li.style.setProperty("--team", team.color);
+          li.className = (team.buzzed ? "buzzed" : "") + (team.locked ? " locked" : "");
+          var name = document.createElement("span");
+          name.textContent = team.name;
+          var score = document.createElement("strong");
+          score.textContent = money(team.score);
+          li.append(name, score);
+          scores.append(li);
+
+          var podium = document.createElement("div");
+          podium.className = "podium" + (team.buzzed ? " buzzed" : "") + (team.locked ? " locked" : "");
+          podium.style.setProperty("--team", team.color);
+          podium.innerHTML = '<div class="cap"><span></span><strong></strong></div><div class="stem"></div>';
+          podium.querySelector("span").textContent = team.name;
+          podium.querySelector("strong").textContent = money(team.score);
+          podium.addEventListener("click", function () { match.buzz(index); render(); });
+          podiums.append(podium);
+        });
+
+        var wall = document.getElementById("wall");
+        wall.hidden = view.wall === "hidden";
+        wall.dataset.open = view.phase === "CLUE_OPEN" ? "true" : "false";
+        wall.replaceChildren();
+        if (view.wall === "lobby") {
+          wall.append(el("p", "kicker", "Audience camera"));
+          wall.append(el("h2", "", view.boardTitle));
+          wall.append(el("p", "prompt", "The board, the clue wall, and three podiums. Same round as the web client."));
+        } else if (view.wall === "finished") {
+          wall.append(el("p", "kicker", "Final scores"));
+          wall.append(el("h2", "", "Game finished"));
+        } else if (view.wall !== "hidden") {
+          var banner = document.createElement("div");
+          banner.className = "banner";
+          banner.append(el("span", "cat-name", view.categoryTitle));
+          banner.append(el("strong", "value", money(view.clueValue)));
+          if (view.dailyDouble) banner.append(el("em", "dd", "Daily Double"));
+          wall.append(banner);
+          if (view.wall === "preview") {
+            wall.append(el("p", "kicker", "Get ready"));
+            wall.append(el("h2", "", "Host is reading the clue"));
+            wall.append(el("p", "explanation", "Buzzers open when the clue appears."));
+          } else {
+            wall.append(el("p", "kicker", "Answer in the form of a question"));
+            wall.append(el("p", "prompt", view.prompt));
+            if (view.sourcePath) wall.append(el("p", "source", view.sourcePath));
+          }
+          if (view.buzzedTeamName) {
+            var buzz = document.createElement("div");
+            buzz.append(el("p", "kicker", "First buzz"));
+            var who = el("h2", "buzz-name", view.buzzedTeamName);
+            who.style.setProperty("--buzz", view.buzzedTeamColor);
+            buzz.append(who);
+            wall.append(buzz);
+            document.getElementById("live").textContent = "First buzz " + view.buzzedTeamName;
+          }
+          if (view.responseVisible) {
+            var answer = document.createElement("div");
+            answer.className = "answer";
+            answer.append(el("p", "kicker", "Answer"));
+            answer.append(el("h3", "", view.response));
+            answer.append(el("p", "explanation", view.explanation));
+            wall.append(answer);
+          }
+        }
+
+        var boardPhase = view.phase === "BOARD";
+        document.querySelectorAll(".cell").forEach(function (cell) {
+          var answered = view.answered.indexOf(cell.dataset.clueId) !== -1;
+          cell.classList.toggle("answered", answered);
+          cell.disabled = !boardPhase || answered;
+          cell.textContent = answered ? "" : cell.dataset.valueLabel;
+        });
+
+        document.getElementById("act-start").disabled = view.phase !== "LOBBY" && view.phase !== "FINISHED";
+        document.getElementById("act-open").disabled = view.phase !== "HOST_PREVIEW";
+        document.getElementById("act-buzz").disabled = view.phase !== "CLUE_OPEN";
+        document.getElementById("act-correct").disabled = view.phase !== "BUZZ_LOCKED";
+        document.getElementById("act-wrong").disabled = view.phase !== "BUZZ_LOCKED";
+        document.getElementById("act-reveal").disabled = view.wall === "hidden" || view.wall === "lobby" || view.wall === "finished" || view.wall === "answer";
+        document.getElementById("act-back").disabled = view.phase !== "ANSWER_REVEALED";
+      }
+
+      function el(tag, className, text) {
+        var node = document.createElement(tag);
+        if (className) node.className = className;
+        node.textContent = text;
+        return node;
+      }
+
+      function buildBoard(board) {
+        var root = document.getElementById("board");
+        root.style.setProperty("--cols", String(board.categories.length));
+        root.replaceChildren();
+        board.categories.forEach(function (category, categoryIndex) {
+          var column = document.createElement("div");
+          column.className = "category";
+          var title = document.createElement("div");
+          title.className = "cat";
+          title.textContent = category.title;
+          column.append(title);
+          category.clues.forEach(function (clue, clueIndex) {
+            var cell = document.createElement("button");
+            cell.type = "button";
+            cell.className = "cell";
+            cell.dataset.clueId = clue.id;
+            cell.dataset.valueLabel = money(clue.value);
+            cell.textContent = money(clue.value);
+            cell.setAttribute("aria-label", category.title + " " + money(clue.value));
+            cell.addEventListener("click", function () {
+              match.select(categoryIndex, clueIndex);
+              render();
+            });
+            column.append(cell);
+          });
+          root.append(column);
+        });
+      }
+
+      function onKey(event) {
+        if (event.repeat) return;
+        if (event.target && event.target.closest && event.target.closest("input, textarea")) return;
+        var key = event.key.toLowerCase();
+        if (event.code === "Space") {
+          event.preventDefault();
+          match.buzz(0);
+        } else if (key === "enter" || key === "o") {
+          var phase = match.snapshot().phase;
+          if (phase === "LOBBY" || phase === "FINISHED") match.start();
+          else match.open();
+        } else if (key === "1") match.buzz(0);
+        else if (key === "2") match.buzz(1);
+        else if (key === "3") match.buzz(2);
+        else if (key === "c" || key === "y") match.judge(true);
+        else if (key === "x" || key === "n") match.judge(false);
+        else if (key === "r") match.reveal();
+        else if (key === "escape" || key === "b") {
+          event.preventDefault();
+          match.back();
+        } else return;
+        render();
+      }
+
+      document.getElementById("act-start").addEventListener("click", function () { match.start(); render(); });
+      document.getElementById("act-open").addEventListener("click", function () { match.open(); render(); });
+      document.getElementById("act-buzz").addEventListener("click", function () { match.buzz(0); render(); });
+      document.getElementById("act-correct").addEventListener("click", function () { match.judge(true); render(); });
+      document.getElementById("act-wrong").addEventListener("click", function () { match.judge(false); render(); });
+      document.getElementById("act-reveal").addEventListener("click", function () { match.reveal(); render(); });
+      document.getElementById("act-back").addEventListener("click", function () { match.back(); render(); });
+      window.addEventListener("keydown", onKey);
+
+      fetch("../TeamJeopardy/Content/Boards/sample-board.json")
+        .then(function (response) {
+          if (!response.ok) throw new Error("Board JSON was not found");
+          return response.json();
+        })
+        .then(function (board) {
+          match = window.TJMatch.createMatch(board, TEAMS);
+          buildBoard(board);
+          render();
+        })
+        .catch(function (error) {
+          document.getElementById("hint").textContent = error.message + ". Serve the unreal folder so the sample board can load.";
+        });
+    </script>
+  </body>
+</html>
