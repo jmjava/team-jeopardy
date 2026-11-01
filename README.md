@@ -239,6 +239,10 @@ Cloud Agent / local stack:
 node scripts/simulate-multiplayer-game.mjs
 ```
 
+## Unreal studio
+
+`unreal/` is a separate Unreal Engine 5.4+ project that puts this round on a stage: a lit card grid, a clue wall, and three podiums. Play is local and follows the same beats as the web client (lobby, host preview, buzz, judge, reveal). It does not connect to the Spring server. A browser preview of that camera is `unreal/preview/index.html`. See [`unreal/README.md`](unreal/README.md).
+
 ## Docs
 
 | Doc | Description |
@@ -256,5 +260,6 @@ server/     Spring Boot game + ingest/pattern/question strategies
 samples/    sample-reactor, sample-gradle, sample-vue, sample-python, sanitized JIRA fixtures
 design/     Figma-importable SVG UI diagrams
 docs/       Figma and white-label documentation
+unreal/     UE5 studio set (local play) and a browser preview of the same stage
 NOTICE      attribution for skgraph-derived Maven/OSGi ports
 ```

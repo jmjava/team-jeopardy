@@ -1,0 +1,13 @@
+{
+	"FileVersion": 3,
+	"EngineAssociation": "5.5",
+	"Category": "",
+	"Description": "Audience-camera studio for the Team Jeopardy board. Local play, no server.",
+	"Modules": [
+		{
+			"Name": "TeamJeopardy",
+			"Type": "Runtime",
+			"LoadingPhase": "Default"
+		}
+	]
+}
