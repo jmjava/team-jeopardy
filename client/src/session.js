@@ -37,6 +37,9 @@ export function saveSession(session, storage = defaultSessionStorage()) {
     displayName: session.displayName || '',
     isHost: !!session.isHost
   }
+  if (session.hostToken) {
+    payload.hostToken = session.hostToken
+  }
   storage.setItem(SESSION_KEY, JSON.stringify(payload))
   return payload
 }

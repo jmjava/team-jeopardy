@@ -40,7 +40,8 @@ const session = reactive({
   hostName: '',
   displayName: '',
   isHost: false,
-  admitted: false
+  admitted: false,
+  hostToken: ''
 })
 
 const snapshot = ref(null)
@@ -127,7 +128,7 @@ function acceptSnapshot(next) {
 async function resyncFromServer() {
   if (!session.roomId) return
   try {
-    const snap = await getRoom(session.roomId, session.playerId || undefined)
+    const snap = await getRoom(session.roomId, session.playerId || undefined, session.hostToken || undefined)
     acceptSnapshot(snap)
   } catch (err) {
     console.warn('Realtime resync failed', err)
@@ -139,6 +140,7 @@ function bindSocket(roomId, isHost) {
   socket = connectGameSocket({
     roomId,
     playerId: session.playerId,
+    hostToken: session.hostToken,
     isHost,
     onSnapshot: (next) => acceptSnapshot(next),
     onStatus: (status) => {
@@ -151,11 +153,11 @@ function bindSocket(roomId, isHost) {
       if (!receipt) return
       if (receipt.accepted) {
         actionNotice.value = ''
-        return
+      } else {
+        actionNotice.value = receipt.reason || 'Action rejected'
       }
-      actionNotice.value = receipt.reason || 'Action rejected'
       const localRev = snapshot.value?.revision
-      if (typeof receipt.revision === 'number' && typeof localRev === 'number' && receipt.revision > localRev) {
+      if (typeof receipt.revision === 'number' && (typeof localRev !== 'number' || receipt.revision > localRev)) {
         void resyncFromServer()
       }
     }
@@ -170,7 +172,9 @@ function applySeat(result, { isHost, displayName, hostName }) {
   session.displayName = displayName || session.hostName
   session.isHost = isHost
   session.admitted = isHost
-  snapshot.value = result.snapshot
+  session.hostToken = isHost ? (result.hostToken || '') : ''
+  snapshot.value = null
+  acceptSnapshot(result.snapshot)
   bindSocket(session.roomId, session.isHost)
   persistSeat()
 }
@@ -218,20 +222,26 @@ async function onJoin(form) {
 async function runAction(type, payload = {}) {
   error.value = ''
   actionNotice.value = ''
+  const body = {
+    type,
+    playerId: session.playerId,
+    payload
+  }
   try {
     if (socket && socketStatus.value === 'connected') {
-      socket.sendAction({
-        type,
-        playerId: session.playerId,
-        payload
-      })
-      return
+      try {
+        socket.sendAction(body)
+        return
+      } catch (err) {
+        if (!String(err?.message || '').includes('not connected')) {
+          throw err
+        }
+      }
     }
-    snapshot.value = await postAction(session.roomId, {
-      playerId: session.playerId,
-      type,
-      payload
-    })
+    acceptSnapshot(await postAction(session.roomId, {
+      ...body,
+      hostToken: session.hostToken || undefined
+    }))
   } catch (err) {
     error.value = err.message
   }
@@ -247,13 +257,14 @@ async function onIngest(payload = {}) {
     const result = await ingestBoard({
       roomId: session.roomId,
       playerId: session.playerId,
+      hostToken: session.hostToken,
       useSample: true,
       sampleType,
       boardTitle: snapshot.value?.title || `${sampleType} ${appName}`,
       questionHints,
       questionFocuses
     })
-    snapshot.value = result.snapshot
+    acceptSnapshot(result.snapshot)
     ingestSummary.value = result.ingestSummary
   } catch (err) {
     error.value = err.message
@@ -269,6 +280,7 @@ async function onIngestGithub(payload) {
     const result = await ingestBoard({
       roomId: session.roomId,
       playerId: session.playerId,
+      hostToken: session.hostToken,
       useSample: false,
       sampleType: 'github',
       repo: payload.repo,
@@ -279,7 +291,7 @@ async function onIngestGithub(payload) {
       questionHints: payload.questionHints,
       questionFocuses: payload.questionFocuses
     })
-    snapshot.value = result.snapshot
+    acceptSnapshot(result.snapshot)
     ingestSummary.value = result.ingestSummary
   } catch (err) {
     error.value = err.message
@@ -295,6 +307,7 @@ async function onIngestPulls(payload) {
     const result = await ingestBoard({
       roomId: session.roomId,
       playerId: session.playerId,
+      hostToken: session.hostToken,
       useSample: false,
       sampleType: 'pulls',
       repo: payload.repo,
@@ -302,7 +315,7 @@ async function onIngestPulls(payload) {
       questionHints: payload.questionHints,
       questionFocuses: payload.questionFocuses
     })
-    snapshot.value = result.snapshot
+    acceptSnapshot(result.snapshot)
     ingestSummary.value = result.ingestSummary
   } catch (err) {
     error.value = err.message
@@ -318,6 +331,7 @@ async function onIngestJira(payload) {
     const result = await ingestJiraBoard({
       roomId: session.roomId,
       playerId: session.playerId,
+      hostToken: session.hostToken,
       projects: payload.projects || [],
       release: payload.release,
       jql: payload.jql,
@@ -327,7 +341,7 @@ async function onIngestJira(payload) {
       questionHints: payload.questionHints,
       questionFocuses: payload.questionFocuses
     })
-    snapshot.value = result.snapshot
+    acceptSnapshot(result.snapshot)
     ingestSummary.value = result.ingestSummary
   } catch (err) {
     error.value = err.message
@@ -358,9 +372,10 @@ async function onLoadSavedBoard(savedBoardId) {
     const result = await loadSavedBoard({
       roomId: session.roomId,
       playerId: session.playerId,
+      hostToken: session.hostToken,
       savedBoardId
     })
-    snapshot.value = result.snapshot
+    acceptSnapshot(result.snapshot)
     ingestSummary.value = result.ingestSummary
   } catch (err) {
     error.value = err.message
@@ -428,6 +443,7 @@ function leaveRoom() {
   session.displayName = ''
   session.isHost = false
   session.admitted = false
+  session.hostToken = ''
   snapshot.value = null
   ingestSummary.value = null
   socketStatus.value = 'idle'
@@ -440,14 +456,16 @@ async function restoreSeat() {
   if (!saved) return
   restoring.value = true
   try {
-    const snap = await getRoom(saved.roomId, saved.playerId)
+    const snap = await getRoom(saved.roomId, saved.playerId, saved.hostToken || undefined)
     session.roomId = snap.roomId
     session.code = snap.code || saved.code
     session.playerId = saved.playerId
     session.hostName = saved.hostName
     session.displayName = saved.displayName
     session.isHost = saved.isHost || snap.hostPlayerId === saved.playerId
-    snapshot.value = snap
+    session.hostToken = session.isHost ? (saved.hostToken || '') : ''
+    snapshot.value = null
+    acceptSnapshot(snap)
     const self = (snap.players || []).find((p) => p.id === session.playerId)
     session.admitted = !!self?.admitted || session.isHost
     bindSocket(session.roomId, session.isHost)

@@ -18,6 +18,7 @@ const WS_URL = import.meta.env.VITE_WS_URL || '/ws'
 export function connectGameSocket({
   roomId,
   playerId,
+  hostToken,
   isHost = false,
   onSnapshot,
   onStatus,
@@ -48,6 +49,9 @@ export function connectGameSocket({
           } catch (err) {
             console.error('Failed to parse host snapshot', err)
           }
+        }, {
+          playerId,
+          hostToken
         })
       }
       if (playerId) {
@@ -86,6 +90,7 @@ export function connectGameSocket({
       }
       client.publish({
         destination: `/app/room/${roomId}/action`,
+        headers: isHost && hostToken ? { hostToken } : {},
         body: JSON.stringify(action)
       })
     },

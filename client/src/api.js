@@ -1,12 +1,14 @@
 const API_BASE = import.meta.env.VITE_API_BASE || ''
 
 async function request(path, options = {}) {
+  const { hostToken, headers, ...rest } = options
   const response = await fetch(`${API_BASE}${path}`, {
+    ...rest,
     headers: {
       'Content-Type': 'application/json',
-      ...(options.headers || {})
-    },
-    ...options
+      ...(hostToken ? { 'X-Host-Token': hostToken } : {}),
+      ...(headers || {})
+    }
   })
   if (!response.ok) {
     let detail = response.statusText
@@ -37,23 +39,29 @@ export function joinRoom({ code, displayName, teamName }) {
 }
 
 export function ingestBoard(payload) {
+  const { hostToken, ...body } = payload || {}
   return request('/api/rooms/ingest', {
     method: 'POST',
-    body: JSON.stringify(payload)
+    body: JSON.stringify(body),
+    hostToken
   })
 }
 
 export function ingestJiraBoard(payload) {
+  const { hostToken, ...body } = payload || {}
   return request('/api/rooms/ingest-jira', {
     method: 'POST',
-    body: JSON.stringify(payload)
+    body: JSON.stringify(body),
+    hostToken
   })
 }
 
 export function loadSavedBoard(payload) {
+  const { hostToken, ...body } = payload || {}
   return request('/api/rooms/load-board', {
     method: 'POST',
-    body: JSON.stringify(payload)
+    body: JSON.stringify(body),
+    hostToken
   })
 }
 
@@ -64,16 +72,17 @@ export function browseGithub({ repo, ref, path, recursive }) {
   })
 }
 
-export function postAction(roomId, { playerId, type, payload }) {
+export function postAction(roomId, { playerId, type, payload, hostToken }) {
   return request(`/api/rooms/${roomId}/actions`, {
     method: 'POST',
-    body: JSON.stringify({ playerId, type, payload })
+    body: JSON.stringify({ playerId, type, payload }),
+    hostToken
   })
 }
 
-export function getRoom(roomId, playerId) {
+export function getRoom(roomId, playerId, hostToken) {
   const q = playerId ? `?playerId=${encodeURIComponent(playerId)}` : ''
-  return request(`/api/rooms/${roomId}${q}`)
+  return request(`/api/rooms/${roomId}${q}`, { hostToken })
 }
 
 export function getRoomByCode(code) {

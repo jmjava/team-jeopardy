@@ -63,6 +63,9 @@ class RemoteClientSyncTest {
     @Autowired
     ObjectMapper objectMapper;
 
+    private String hostId;
+    private String hostToken;
+
     @Test
     void concurrentHttpBuzzHasOneWinnerAndSharedRevision() throws Exception {
         Table table = openTable(6);
@@ -226,7 +229,8 @@ class RemoteClientSyncTest {
         JsonNode created = post("/api/rooms", Map.of("hostName", "Pat Host", "title", "Sync table"));
         String roomId = created.path("snapshot").path("roomId").asText();
         String code = created.path("snapshot").path("code").asText();
-        String hostId = created.path("hostPlayerId").asText();
+        hostId = created.path("hostPlayerId").asText();
+        hostToken = created.path("hostToken").asText();
         List<String> playerIds = new ArrayList<>();
         for (int i = 0; i < players; i++) {
             JsonNode joined = post("/api/rooms/join", Map.of(
@@ -278,6 +282,9 @@ class RemoteClientSyncTest {
     private ResponseEntity<String> postRaw(String path, Map<String, ?> body) throws Exception {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
+        if (hostToken != null && !hostToken.isBlank()) {
+            headers.set("X-Host-Token", hostToken);
+        }
         return rest.postForEntity(
                 "http://localhost:" + port + path,
                 new HttpEntity<>(objectMapper.writeValueAsString(body), headers),
@@ -313,7 +320,13 @@ class RemoteClientSyncTest {
                     }
                 }
         ).get(8, TimeUnit.SECONDS);
-        session.subscribe(destination, new StompFrameHandler() {
+        StompHeaders sub = new StompHeaders();
+        sub.setDestination(destination);
+        if (destination.endsWith(".host") && hostToken != null) {
+            sub.add("playerId", hostId);
+            sub.add("hostToken", hostToken);
+        }
+        session.subscribe(sub, new StompFrameHandler() {
             @Override
             public Type getPayloadType(StompHeaders headers) {
                 return GameSnapshot.class;

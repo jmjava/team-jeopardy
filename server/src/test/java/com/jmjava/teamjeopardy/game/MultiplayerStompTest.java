@@ -51,12 +51,15 @@ class MultiplayerStompTest {
     @Autowired
     ObjectMapper objectMapper;
 
+    private String hostId;
+    private String hostToken;
+
     @Test
     void hostPlayersAndDisplayShareOneRealtimeTable() throws Exception {
         JsonNode created = post("/api/rooms", Map.of("hostName", "Pat Host", "title", "STOMP Table"));
+        rememberHost(created);
         String roomId = created.path("snapshot").path("roomId").asText();
         String code = created.path("snapshot").path("code").asText();
-        String hostId = created.path("hostPlayerId").asText();
 
         JsonNode p1 = post("/api/rooms/join", Map.of("code", code, "displayName", "Alex", "teamName", "Blue Owls"));
         JsonNode p2 = post("/api/rooms/join", Map.of("code", code, "displayName", "Sam", "teamName", "Red Foxes"));
@@ -147,9 +150,9 @@ class MultiplayerStompTest {
         ));
 
         JsonNode created = post("/api/rooms", Map.of("hostName", "Pat Host", "title", "STOMP Full"));
+        rememberHost(created);
         String roomId = created.path("snapshot").path("roomId").asText();
         String code = created.path("snapshot").path("code").asText();
-        String hostId = created.path("hostPlayerId").asText();
         String p1Id = post("/api/rooms/join", Map.of("code", code, "displayName", "Alex", "teamName", "Blue Owls"))
                 .path("playerId").asText();
         String p2Id = post("/api/rooms/join", Map.of("code", code, "displayName", "Sam", "teamName", "Red Foxes"))
@@ -230,9 +233,9 @@ class MultiplayerStompTest {
     @Test
     void rejectedBuzzPublishesActionErrorWithoutDroppingSession() throws Exception {
         JsonNode created = post("/api/rooms", Map.of("hostName", "Pat Host", "title", "Error Table"));
+        rememberHost(created);
         String roomId = created.path("snapshot").path("roomId").asText();
         String code = created.path("snapshot").path("code").asText();
-        String hostId = created.path("hostPlayerId").asText();
 
         JsonNode p1 = post("/api/rooms/join", Map.of("code", code, "displayName", "Alex", "teamName", "Blue Owls"));
         String p1Id = p1.path("playerId").asText();
@@ -269,9 +272,17 @@ class MultiplayerStompTest {
         errors.disconnect();
     }
 
+    private void rememberHost(JsonNode created) {
+        hostId = created.path("hostPlayerId").asText();
+        hostToken = created.path("hostToken").asText();
+    }
+
     private JsonNode post(String path, Map<String, ?> body) throws Exception {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
+        if (hostToken != null && !hostToken.isBlank()) {
+            headers.set("X-Host-Token", hostToken);
+        }
         ResponseEntity<String> response = rest.postForEntity(
                 "http://localhost:" + port + path,
                 new HttpEntity<>(objectMapper.writeValueAsString(body), headers),
@@ -304,7 +315,13 @@ class MultiplayerStompTest {
                     }
                 }
         ).get(8, TimeUnit.SECONDS);
-        session.subscribe(destination, new StompFrameHandler() {
+        StompHeaders sub = new StompHeaders();
+        sub.setDestination(destination);
+        if (destination.endsWith(".host") && hostToken != null) {
+            sub.add("playerId", hostId);
+            sub.add("hostToken", hostToken);
+        }
+        session.subscribe(sub, new StompFrameHandler() {
             @Override
             public Type getPayloadType(StompHeaders headers) {
                 return GameSnapshot.class;
@@ -347,10 +364,13 @@ class MultiplayerStompTest {
         return new ErrorInbox(client, session, queue);
     }
 
-    private static void send(StompSession session, String roomId, GameAction action) {
+    private void send(StompSession session, String roomId, GameAction action) {
         StompHeaders headers = new StompHeaders();
         headers.setDestination("/app/room/" + roomId + "/action");
         headers.setContentType(MediaType.APPLICATION_JSON);
+        if (hostToken != null && action.playerId() != null && action.playerId().equals(hostId)) {
+            headers.add("hostToken", hostToken);
+        }
         session.send(headers, action);
     }
 

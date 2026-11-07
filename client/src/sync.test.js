@@ -22,4 +22,31 @@ describe('snapshot revision gate', () => {
   it('ignores empty payloads', () => {
     expect(shouldApplySnapshot({ revision: 1 }, null)).toBe(false)
   })
+
+  it('keeps the host view when a redacted copy of the same revision arrives late', () => {
+    const host = {
+      revision: 8,
+      phase: 'HOST_PREVIEW',
+      activeClue: { clueId: 'c1', prompt: 'secret', response: 'What is secret?' },
+      board: { categories: [{ clues: [{ prompt: 'secret' }] }] }
+    }
+    const redacted = {
+      revision: 8,
+      phase: 'HOST_PREVIEW',
+      activeClue: { clueId: 'c1', prompt: null, response: null },
+      board: { categories: [{ clues: [{ prompt: null }] }] }
+    }
+    expect(shouldApplySnapshot(host, redacted)).toBe(false)
+    expect(applySnapshot(host, redacted)).toBe(host)
+  })
+
+  it('still applies a newer public snapshot over an older host view', () => {
+    const host = {
+      revision: 8,
+      phase: 'HOST_PREVIEW',
+      activeClue: { prompt: 'secret', response: 'What is secret?' }
+    }
+    const next = { revision: 9, phase: 'CLUE_OPEN', activeClue: { prompt: 'secret', response: null } }
+    expect(shouldApplySnapshot(host, next)).toBe(true)
+  })
 })

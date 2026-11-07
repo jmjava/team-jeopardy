@@ -34,7 +34,7 @@ final class RealPlayHttpSupport {
         INCORRECT_THEN_REVEAL
     }
 
-    record Room(String roomId, String code, String hostId, String alexId, String samId) {
+    record Room(String roomId, String code, String hostId, String hostToken, String alexId, String samId) {
     }
 
     record ClueRef(String id, int value, String categoryTitle, boolean dailyDouble, int categoryIndex) {
@@ -55,14 +55,15 @@ final class RealPlayHttpSupport {
         String roomId = created.path("snapshot").path("roomId").asText();
         String code = created.path("snapshot").path("code").asText();
         String hostId = created.path("hostPlayerId").asText();
+        String hostToken = created.path("hostToken").asText();
         JsonNode alex = post("/api/rooms/join", Map.of("code", code, "displayName", "Alex", "teamName", "Blue Owls"));
         JsonNode sam = post("/api/rooms/join", Map.of("code", code, "displayName", "Sam", "teamName", "Red Foxes"));
-        return new Room(roomId, code, hostId, alex.path("playerId").asText(), sam.path("playerId").asText());
+        return new Room(roomId, code, hostId, hostToken, alex.path("playerId").asText(), sam.path("playerId").asText());
     }
 
     GameSnapshot playInstalledBoardToFinished(Room room, String label) throws Exception {
-        post("/api/rooms/" + room.roomId() + "/actions", action(room.hostId(), "ADMIT_ALL"));
-        GameSnapshot board = actionSnap(room.roomId(), room.hostId(), "START", Map.of());
+        post("/api/rooms/" + room.roomId() + "/actions", action(room.hostId(), "ADMIT_ALL"), room.hostToken());
+        GameSnapshot board = actionSnap(room.roomId(), room.hostId(), room.hostToken(), "START", Map.of());
         assertEquals(GamePhase.BOARD, board.phase(), label + " should start on BOARD");
         assertNotNull(board.board());
         assertFalse(board.board().categories().isEmpty(), label + " board empty");
@@ -100,7 +101,7 @@ final class RealPlayHttpSupport {
             boolean assertRedaction
     ) throws Exception {
         GameSnapshot hostPreview = actionSnap(
-                room.roomId(), room.hostId(), "SELECT_CLUE", Map.of("clueId", clue.id()));
+                room.roomId(), room.hostId(), room.hostToken(), "SELECT_CLUE", Map.of("clueId", clue.id()));
         assertEquals(GamePhase.HOST_PREVIEW, hostPreview.phase());
         assertEquals(clue.value(), hostPreview.activeClue().value());
         if (clue.dailyDouble()) {
@@ -118,7 +119,7 @@ final class RealPlayHttpSupport {
             assertTrue(pub.activeClue().dailyDouble(), "display still shows Daily Double badge");
         }
 
-        GameSnapshot open = actionSnap(room.roomId(), room.hostId(), "OPEN_BUZZERS", Map.of());
+        GameSnapshot open = actionSnap(room.roomId(), room.hostId(), room.hostToken(), "OPEN_BUZZERS", Map.of());
         assertEquals(GamePhase.CLUE_OPEN, open.phase());
         GameSnapshot publicOpen = getRoom(room.roomId(), null);
         assertNotNull(publicOpen.activeClue().prompt());
@@ -129,30 +130,30 @@ final class RealPlayHttpSupport {
                 GameSnapshot locked = actionSnap(room.roomId(), room.alexId(), "BUZZ", Map.of());
                 assertEquals(GamePhase.BUZZ_LOCKED, locked.phase());
                 credit(expected, "Blue Owls", clue.value());
-                yield actionSnap(room.roomId(), room.hostId(), "JUDGE", Map.of("correct", true));
+                yield actionSnap(room.roomId(), room.hostId(), room.hostToken(), "JUDGE", Map.of("correct", true));
             }
             case INCORRECT_THEN_CORRECT -> {
-                actionSnap(room.roomId(), room.alexId(), "BUZZ", Map.of());
+                actionSnap(room.roomId(), room.alexId(), null, "BUZZ", Map.of());
                 credit(expected, "Blue Owls", -clue.value());
-                GameSnapshot reopened = actionSnap(room.roomId(), room.hostId(), "JUDGE", Map.of("correct", false));
+                GameSnapshot reopened = actionSnap(room.roomId(), room.hostId(), room.hostToken(), "JUDGE", Map.of("correct", false));
                 assertEquals(GamePhase.CLUE_OPEN, reopened.phase());
-                actionSnap(room.roomId(), room.samId(), "BUZZ", Map.of());
+                actionSnap(room.roomId(), room.samId(), null, "BUZZ", Map.of());
                 credit(expected, "Red Foxes", clue.value());
-                yield actionSnap(room.roomId(), room.hostId(), "JUDGE", Map.of("correct", true));
+                yield actionSnap(room.roomId(), room.hostId(), room.hostToken(), "JUDGE", Map.of("correct", true));
             }
-            case REVEAL_NO_BUZZ -> actionSnap(room.roomId(), room.hostId(), "REVEAL", Map.of());
+            case REVEAL_NO_BUZZ -> actionSnap(room.roomId(), room.hostId(), room.hostToken(), "REVEAL", Map.of());
             case INCORRECT_THEN_REVEAL -> {
-                actionSnap(room.roomId(), room.samId(), "BUZZ", Map.of());
+                actionSnap(room.roomId(), room.samId(), null, "BUZZ", Map.of());
                 credit(expected, "Red Foxes", -clue.value());
-                GameSnapshot reopened = actionSnap(room.roomId(), room.hostId(), "JUDGE", Map.of("correct", false));
+                GameSnapshot reopened = actionSnap(room.roomId(), room.hostId(), room.hostToken(), "JUDGE", Map.of("correct", false));
                 assertEquals(GamePhase.CLUE_OPEN, reopened.phase());
-                yield actionSnap(room.roomId(), room.hostId(), "REVEAL", Map.of());
+                yield actionSnap(room.roomId(), room.hostId(), room.hostToken(), "REVEAL", Map.of());
             }
         };
 
         assertEquals(GamePhase.ANSWER_REVEALED, judged.phase());
         assertTrue(judged.activeClue().responseVisible());
-        GameSnapshot after = actionSnap(room.roomId(), room.hostId(), "RETURN_BOARD", Map.of());
+        GameSnapshot after = actionSnap(room.roomId(), room.hostId(), room.hostToken(), "RETURN_BOARD", Map.of());
         assertTrue(after.phase() == GamePhase.BOARD || after.phase() == GamePhase.FINISHED);
         assertScores(after, expected);
         return after;
@@ -176,8 +177,15 @@ final class RealPlayHttpSupport {
     }
 
     JsonNode post(String path, Object body) throws Exception {
+        return post(path, body, null);
+    }
+
+    JsonNode post(String path, Object body, String hostToken) throws Exception {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
+        if (hostToken != null && !hostToken.isBlank()) {
+            headers.set("X-Host-Token", hostToken);
+        }
         ResponseEntity<String> response = rest.postForEntity(
                 "http://localhost:" + port + path,
                 new HttpEntity<>(mapper.writeValueAsString(body), headers),
@@ -196,7 +204,11 @@ final class RealPlayHttpSupport {
     }
 
     GameSnapshot actionSnap(String roomId, String playerId, String type, Map<String, ?> payload) throws Exception {
-        JsonNode node = post("/api/rooms/" + roomId + "/actions", action(playerId, type, payload));
+        return actionSnap(roomId, playerId, null, type, payload);
+    }
+
+    GameSnapshot actionSnap(String roomId, String playerId, String hostToken, String type, Map<String, ?> payload) throws Exception {
+        JsonNode node = post("/api/rooms/" + roomId + "/actions", action(playerId, type, payload), hostToken);
         return mapper.treeToValue(node, GameSnapshot.class);
     }
 

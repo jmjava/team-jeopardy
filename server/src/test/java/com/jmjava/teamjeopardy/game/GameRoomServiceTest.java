@@ -10,6 +10,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -242,6 +243,58 @@ class GameRoomServiceTest {
         GameRoomService.SnapshotPair end = service.snapshotPair(roomId);
         assertEquals(end.pub().revision(), end.host().revision());
         assertEquals(GamePhase.BUZZ_LOCKED, end.pub().phase());
+    }
+
+    @Test
+    void hostIdAloneDoesNotUnlockAnswersOrModeratorActions() {
+        var created = service.createRoom("Pat", "Secret");
+        String roomId = created.snapshot().roomId();
+        String hostId = created.hostPlayerId();
+        service.joinRoom(created.snapshot().code(), "Alex", "Blue");
+        service.installBoard(roomId, hostId, demoBoard("c1"));
+        service.admitAll(roomId, hostId);
+        service.startGame(roomId, hostId);
+        service.selectClue(roomId, hostId, "c1");
+
+        GameSnapshot leaked = service.viewFor(roomId, hostId, null);
+        assertNull(leaked.activeClue().prompt());
+        assertNull(leaked.activeClue().response());
+        GameSnapshot host = service.viewFor(roomId, hostId, created.hostToken());
+        assertEquals("prompt text", host.activeClue().prompt());
+        assertEquals("What is x?", host.activeClue().response());
+
+        assertThrows(ResponseStatusException.class, () -> service.applyAction(
+                roomId,
+                new GameAction("OPEN_BUZZERS", hostId, null, Map.of()),
+                null
+        ));
+        assertEquals(GamePhase.HOST_PREVIEW, service.publicSnapshot(roomId).phase());
+        service.applyAction(
+                roomId,
+                new GameAction("OPEN_BUZZERS", hostId, null, Map.of()),
+                created.hostToken()
+        );
+        assertEquals(GamePhase.CLUE_OPEN, service.publicSnapshot(roomId).phase());
+    }
+
+    @Test
+    void startIsRejectedOnceTheMatchLeavesTheLobby() {
+        var created = service.createRoom("Pat", "Once");
+        String roomId = created.snapshot().roomId();
+        String hostId = created.hostPlayerId();
+        service.joinRoom(created.snapshot().code(), "Alex", "Blue");
+        service.installBoard(roomId, hostId, demoBoard("c1"));
+        service.admitAll(roomId, hostId);
+        service.startGame(roomId, hostId);
+        service.selectClue(roomId, hostId, "c1");
+
+        ResponseStatusException again = assertThrows(
+                ResponseStatusException.class,
+                () -> service.startGame(roomId, hostId)
+        );
+        assertTrue(again.getReason().toLowerCase().contains("already started"));
+        assertEquals(GamePhase.HOST_PREVIEW, service.publicSnapshot(roomId).phase());
+        assertNotNull(service.publicSnapshot(roomId).activeClue());
     }
 
     @Test

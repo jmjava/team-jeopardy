@@ -18,7 +18,9 @@ public final class Dto {
     public record CreateRoomResponse(
             GameSnapshot snapshot,
             String hostPlayerId,
-            String hostName
+            String hostName,
+            /** Present only on this response. Required for host actions and the host feed. */
+            String hostToken
     ) {
     }
 
