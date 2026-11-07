@@ -16,14 +16,16 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     private String allowedOrigins;
 
     private final HostSubscribeGuard hostSubscribeGuard;
+    private final BrokerPublishGuard brokerPublishGuard;
 
-    public WebSocketConfig(HostSubscribeGuard hostSubscribeGuard) {
+    public WebSocketConfig(HostSubscribeGuard hostSubscribeGuard, BrokerPublishGuard brokerPublishGuard) {
         this.hostSubscribeGuard = hostSubscribeGuard;
+        this.brokerPublishGuard = brokerPublishGuard;
     }
 
     @Override
     public void configureClientInboundChannel(ChannelRegistration registration) {
-        registration.interceptors(hostSubscribeGuard);
+        registration.interceptors(hostSubscribeGuard, brokerPublishGuard);
     }
 
     @Override
