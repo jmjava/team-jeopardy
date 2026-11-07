@@ -49,7 +49,7 @@ public record ActiveClue(
     public ActiveClue withoutAnswer() {
         return new ActiveClue(
                 clueId, categoryId, categoryTitle, value,
-                prompt, null, null, sourcePath, dailyDouble, false,
+                prompt, null, null, null, dailyDouble, false,
                 buzzedPlayerId, buzzedPlayerName, buzzedTeamId, buzzedTeamName, buzzedTeamColor, wager
         );
     }
