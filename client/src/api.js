@@ -1,12 +1,13 @@
 const API_BASE = import.meta.env.VITE_API_BASE || ''
 
 async function request(path, options = {}) {
-  const { hostToken, headers, ...rest } = options
+  const { hostToken, playerToken, headers, ...rest } = options
   const response = await fetch(`${API_BASE}${path}`, {
     ...rest,
     headers: {
       'Content-Type': 'application/json',
       ...(hostToken ? { 'X-Host-Token': hostToken } : {}),
+      ...(playerToken ? { 'X-Player-Token': playerToken } : {}),
       ...(headers || {})
     }
   })
@@ -72,17 +73,18 @@ export function browseGithub({ repo, ref, path, recursive }) {
   })
 }
 
-export function postAction(roomId, { playerId, type, payload, hostToken }) {
+export function postAction(roomId, { playerId, type, payload, hostToken, playerToken }) {
   return request(`/api/rooms/${roomId}/actions`, {
     method: 'POST',
     body: JSON.stringify({ playerId, type, payload }),
-    hostToken
+    hostToken,
+    playerToken
   })
 }
 
-export function getRoom(roomId, playerId, hostToken) {
+export function getRoom(roomId, playerId, hostToken, playerToken) {
   const q = playerId ? `?playerId=${encodeURIComponent(playerId)}` : ''
-  return request(`/api/rooms/${roomId}${q}`, { hostToken })
+  return request(`/api/rooms/${roomId}${q}`, { hostToken, playerToken })
 }
 
 export function getRoomByCode(code) {

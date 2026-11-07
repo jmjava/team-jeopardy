@@ -39,12 +39,13 @@ public class GameWsController {
     public void handleAction(
             @DestinationVariable String roomId,
             @Payload GameAction action,
-            @Header(name = "hostToken", required = false) String hostToken
+            @Header(name = "hostToken", required = false) String hostToken,
+            @Header(name = "playerToken", required = false) String playerToken
     ) {
         String playerId = action == null ? null : action.playerId();
         String type = action == null ? null : action.type();
         try {
-            GameSnapshot applied = gameRoomService.applyAction(roomId, action, hostToken);
+            GameSnapshot applied = gameRoomService.applyAction(roomId, action, hostToken, playerToken);
             broadcaster.broadcast(roomId);
             broadcaster.sendReceipt(ActionReceipt.accepted(playerId, type, applied));
         } catch (ResponseStatusException ex) {

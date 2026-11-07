@@ -63,16 +63,17 @@ public class GameController {
     public Dto.JoinRoomResponse join(@Valid @RequestBody Dto.JoinRoomRequest request) {
         var joined = gameRoomService.joinRoom(request.code(), request.displayName(), request.teamName());
         broadcaster.broadcast(joined.snapshot().roomId());
-        return new Dto.JoinRoomResponse(joined.snapshot(), joined.playerId());
+        return new Dto.JoinRoomResponse(joined.snapshot(), joined.playerId(), joined.playerToken());
     }
 
     @GetMapping("/rooms/{roomId}")
     public GameSnapshot getRoom(
             @PathVariable String roomId,
             @RequestParam(required = false) String playerId,
-            @RequestHeader(value = "X-Host-Token", required = false) String hostToken
+            @RequestHeader(value = "X-Host-Token", required = false) String hostToken,
+            @RequestHeader(value = "X-Player-Token", required = false) String playerToken
     ) {
-        return gameRoomService.viewFor(roomId, playerId, hostToken);
+        return gameRoomService.viewFor(roomId, playerId, hostToken, playerToken);
     }
 
     @GetMapping("/rooms/code/{code}")
@@ -206,12 +207,14 @@ public class GameController {
     public GameSnapshot action(
             @PathVariable String roomId,
             @Valid @RequestBody Dto.ActionRequest request,
-            @RequestHeader(value = "X-Host-Token", required = false) String hostToken
+            @RequestHeader(value = "X-Host-Token", required = false) String hostToken,
+            @RequestHeader(value = "X-Player-Token", required = false) String playerToken
     ) {
         GameSnapshot snapshot = gameRoomService.applyAction(
                 roomId,
                 new GameAction(request.type(), request.playerId(), null, request.payload()),
-                hostToken
+                hostToken,
+                playerToken
         );
         broadcaster.broadcast(roomId);
         return snapshot;

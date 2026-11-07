@@ -58,6 +58,8 @@ class DistributedMultiplayerTest {
     @Autowired
     ObjectMapper objectMapper;
 
+    private final Map<String, String> playerTokens = new HashMap<>();
+
     @Test
     void nativeClientsPlayToFinishedWithoutLeakingTheHostFeed() throws Exception {
         JsonNode saved = post("/api/question-bank", Map.of(
@@ -89,10 +91,13 @@ class DistributedMultiplayerTest {
         assertFalse(hostToken.isBlank());
         assertFalse(created.path("snapshot").toString().contains(hostToken), "snapshot must not carry the host token");
 
-        String alexId = post("/api/rooms/join", Map.of("code", code, "displayName", "Alex", "teamName", "Blue Owls"), null)
-                .path("playerId").asText();
-        String samId = post("/api/rooms/join", Map.of("code", code, "displayName", "Sam", "teamName", "Red Foxes"), null)
-                .path("playerId").asText();
+        JsonNode alexJoin = post("/api/rooms/join", Map.of("code", code, "displayName", "Alex", "teamName", "Blue Owls"), null);
+        JsonNode samJoin = post("/api/rooms/join", Map.of("code", code, "displayName", "Sam", "teamName", "Red Foxes"), null);
+        String alexId = alexJoin.path("playerId").asText();
+        String samId = samJoin.path("playerId").asText();
+        playerTokens.put(alexId, alexJoin.path("playerToken").asText());
+        playerTokens.put(samId, samJoin.path("playerToken").asText());
+        assertFalse(alexJoin.path("snapshot").toString().contains(alexJoin.path("playerToken").asText()));
 
         ResponseEntity<String> stolenLoad = postRaw("/api/rooms/load-board", Map.of(
                 "roomId", roomId,
@@ -332,12 +337,16 @@ class DistributedMultiplayerTest {
         return inbox;
     }
 
-    private static void send(StompSession session, String roomId, GameAction action, String hostToken) {
+    private void send(StompSession session, String roomId, GameAction action, String hostToken) {
         StompHeaders headers = new StompHeaders();
         headers.setDestination("/app/room/" + roomId + "/action");
         headers.setContentType(MediaType.APPLICATION_JSON);
         if (hostToken != null) {
             headers.add("hostToken", hostToken);
+        }
+        String playerToken = playerTokens.get(action.playerId());
+        if (playerToken != null) {
+            headers.add("playerToken", playerToken);
         }
         session.send(headers, action);
     }

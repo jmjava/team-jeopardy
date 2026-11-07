@@ -26,6 +26,7 @@ import org.springframework.web.socket.sockjs.client.Transport;
 
 import java.lang.reflect.Type;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.BlockingQueue;
@@ -65,6 +66,7 @@ class RemoteClientSyncTest {
 
     private String hostId;
     private String hostToken;
+    private final Map<String, String> playerTokens = new HashMap<>();
 
     @Test
     void concurrentHttpBuzzHasOneWinnerAndSharedRevision() throws Exception {
@@ -238,7 +240,9 @@ class RemoteClientSyncTest {
                     "displayName", "P" + i,
                     "teamName", i % 2 == 0 ? "Blue Owls" : "Red Foxes"
             ));
-            playerIds.add(joined.path("playerId").asText());
+            String playerId = joined.path("playerId").asText();
+            playerTokens.put(playerId, joined.path("playerToken").asText());
+            playerIds.add(playerId);
         }
         JsonNode saved = post("/api/question-bank", Map.of(
                 "title", "Sync drill",
@@ -284,6 +288,12 @@ class RemoteClientSyncTest {
         headers.setContentType(MediaType.APPLICATION_JSON);
         if (hostToken != null && !hostToken.isBlank()) {
             headers.set("X-Host-Token", hostToken);
+        }
+        if (body.get("playerId") instanceof String playerId) {
+            String playerToken = playerTokens.get(playerId);
+            if (playerToken != null && !playerToken.isBlank()) {
+                headers.set("X-Player-Token", playerToken);
+            }
         }
         return rest.postForEntity(
                 "http://localhost:" + port + path,
@@ -377,10 +387,14 @@ class RemoteClientSyncTest {
         return new ReceiptInbox(client, session, queue, errors);
     }
 
-    private static void send(StompSession session, String roomId, GameAction action) {
+    private void send(StompSession session, String roomId, GameAction action) {
         StompHeaders headers = new StompHeaders();
         headers.setDestination("/app/room/" + roomId + "/action");
         headers.setContentType(MediaType.APPLICATION_JSON);
+        String playerToken = playerTokens.get(action.playerId());
+        if (playerToken != null) {
+            headers.add("playerToken", playerToken);
+        }
         session.send(headers, action);
     }
 

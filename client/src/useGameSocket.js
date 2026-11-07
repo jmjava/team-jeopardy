@@ -19,6 +19,7 @@ export function connectGameSocket({
   roomId,
   playerId,
   hostToken,
+  playerToken,
   isHost = false,
   onSnapshot,
   onStatus,
@@ -90,7 +91,10 @@ export function connectGameSocket({
       }
       client.publish({
         destination: `/app/room/${roomId}/action`,
-        headers: isHost && hostToken ? { hostToken } : {},
+        headers: {
+          ...(isHost && hostToken ? { hostToken } : {}),
+          ...(playerToken ? { playerToken } : {})
+        },
         body: JSON.stringify(action)
       })
     },
