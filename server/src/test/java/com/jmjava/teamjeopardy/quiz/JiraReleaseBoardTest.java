@@ -82,6 +82,11 @@ class JiraReleaseBoardTest {
         assertEquals(Boolean.TRUE, built.summary().get("fixture"));
         assertTrue(built.board().categories().stream().anyMatch(c -> c.title().contains("Checkout")));
         assertTrue(built.board().categories().stream().anyMatch(c -> c.title().contains("Also in this release")));
+        assertTrue(built.board().hasFinalJeopardy());
+        assertTrue(built.board().finalJeopardy().finalJeopardy());
+        assertFalse(built.board().finalJeopardy().prompt().isBlank());
+        assertTrue(built.board().finalJeopardy().response().startsWith("What is "));
+        assertEquals(Boolean.TRUE, built.summary().get("finalJeopardy"));
     }
 
     @Test
@@ -100,6 +105,8 @@ class JiraReleaseBoardTest {
         assertTrue(titles.stream().anyMatch(t -> t.contains("Shop")));
         assertTrue(titles.stream().anyMatch(t -> t.contains("Payments Service")));
         assertTrue(titles.stream().anyMatch(t -> t.contains("Inventory")));
+        assertTrue(built.board().hasFinalJeopardy());
+        assertTrue(built.board().finalJeopardy().sourcePath().matches("SHOP-\\d+|PAY-\\d+|INV-\\d+|NOTE-\\d+|ADMIN-\\d+"));
     }
 
     @Test
@@ -128,6 +135,8 @@ class JiraReleaseBoardTest {
                 built.board().categories().getFirst().clues().getFirst().response(),
                 loaded.categories().getFirst().clues().getFirst().response()
         );
+        assertTrue(loaded.hasFinalJeopardy());
+        assertEquals(built.board().finalJeopardy().response(), loaded.finalJeopardy().response());
     }
 
     private static void assertPlayableJiraBoard(Board board) {

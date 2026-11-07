@@ -199,7 +199,17 @@ class MultiplayerStompTest {
             send(hostInbox.session, roomId, new GameAction("OPEN_BUZZERS", hostId, null, Map.of()));
             await(playerInbox, s -> s.phase() == GamePhase.CLUE_OPEN);
 
-            if (i % 2 == 0) {
+            if (clue.dailyDouble()) {
+                send(playerInbox.session, roomId, new GameAction("BUZZ", p1Id, null, Map.of()));
+                await(hostInbox, s -> s.phase() == GamePhase.DD_WAGER);
+                int score = expected.getOrDefault("Blue Owls", 0);
+                int max = score < 5 ? 1000 : score;
+                int wager = Math.min(clue.value(), max);
+                send(playerInbox.session, roomId, new GameAction("SET_WAGER", p1Id, null, Map.of("amount", wager)));
+                await(hostInbox, s -> s.phase() == GamePhase.BUZZ_LOCKED);
+                send(hostInbox.session, roomId, new GameAction("JUDGE", hostId, null, Map.of("correct", false)));
+                expected.merge("Blue Owls", -wager, Integer::sum);
+            } else if (i % 2 == 0) {
                 send(playerInbox.session, roomId, new GameAction("BUZZ", p1Id, null, Map.of()));
                 await(hostInbox, s -> s.phase() == GamePhase.BUZZ_LOCKED);
                 send(hostInbox.session, roomId, new GameAction("JUDGE", hostId, null, Map.of("correct", false)));

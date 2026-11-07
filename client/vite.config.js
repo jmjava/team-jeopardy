@@ -6,9 +6,9 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      '/api': 'http://localhost:8080',
+      '/api': process.env.VITE_API_TARGET || 'http://localhost:8080',
       '/ws': {
-        target: 'http://localhost:8080',
+        target: process.env.VITE_API_TARGET || 'http://localhost:8080',
         ws: true
       }
     }

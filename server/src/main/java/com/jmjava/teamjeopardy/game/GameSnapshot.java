@@ -21,6 +21,7 @@ public record GameSnapshot(
         /** Moderator hints used when generating this board (may be blank). */
         String questionHints,
         /** Players who missed this clue and cannot buzz again until the next one. */
-        List<String> lockedOutPlayerIds
+        List<String> lockedOutPlayerIds,
+        FinalRound finalRound
 ) {
 }

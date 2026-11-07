@@ -12,7 +12,9 @@ const props = defineProps({
   display: Boolean
 })
 
-const emit = defineEmits(['select'])
+const emit = defineEmits(['select', 'final'])
+
+const hasFinal = computed(() => !!props.board?.finalJeopardy || !!props.board?.finalCategoryTitle)
 
 const cellMap = computed(() => {
   const map = new Map()
@@ -38,6 +40,14 @@ function cellLabel(category, clue) {
       <h2>{{ board?.title || 'Board' }}</h2>
       <p class="muted" v-if="isHost && !finished">Select a clue — you’ll see it before players.</p>
       <p v-if="finished" class="done">Game finished</p>
+      <button
+        v-if="isHost && !finished && hasFinal"
+        class="ok final-btn"
+        data-testid="start-final"
+        @click="emit('final')"
+      >
+        Final Jeopardy
+      </button>
     </div>
 
     <div class="board-scroller">
@@ -91,6 +101,10 @@ function cellLabel(category, clue) {
 .done {
   color: var(--gold);
   font-weight: 700;
+}
+
+.final-btn {
+  margin-top: 0.65rem;
 }
 
 .board {

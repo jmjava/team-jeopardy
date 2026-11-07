@@ -57,4 +57,29 @@ class JiraReleaseQuestionStrategyTest {
             );
         }
     }
+
+    @Test
+    void pickFinalPrefersLeftoverCrossProjectStory() {
+        JiraIssueFact leftoverStory = new JiraIssueFact(
+                "SHOP-2", "SHOP", "Shop", "Cross-team checkout contract",
+                "Shared checkout contract for the release.",
+                "Given a cart, when checkout starts, then both SHOP and PAY honor the same flag.",
+                "Story", "Checkout", "api", List.of(), "2.4.0", "Done"
+        );
+        JiraIssueFact ordinary = new JiraIssueFact(
+                "PROJ-1", "PROJ", "Storefront", "Add guest checkout flag",
+                "Expose a checkout flag.",
+                "",
+                "Task", "Checkout", "web", List.of(), "2.4.0", "Done"
+        );
+        JiraReleaseQuestionStrategy.FinalSelection picked = strategy.pickFinal(List.of(
+                new JiraCategoryBucket("Checkout", "epic", List.of(ordinary)),
+                new JiraCategoryBucket("Also in this release.", "leftover", List.of(leftoverStory))
+        ), new AtomicInteger(20));
+
+        assertTrue(picked.clue().finalJeopardy());
+        assertEquals("What is SHOP-2?", picked.clue().response());
+        assertEquals("Checkout", picked.categoryTitle());
+        assertEquals("SHOP-2", picked.issueKey());
+    }
 }

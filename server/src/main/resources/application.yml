@@ -26,6 +26,8 @@ team-jeopardy:
   # Leftover timer hint. First-buzz exclusivity is lock-based, not timed.
   # A miss locks that player out of the rest of the clue (Jeopardy rules).
   buzz-lock-ms: 8000
+  final:
+    writing-seconds: 30
   persistence:
     # SQLite file for guide-generated boards/clues (reuse across sessions)
     enabled: true

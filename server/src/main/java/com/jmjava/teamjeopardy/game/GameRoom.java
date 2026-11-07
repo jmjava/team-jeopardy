@@ -25,6 +25,8 @@ public class GameRoom {
     private GamePhase phase = GamePhase.LOBBY;
     private Board board;
     private ActiveClue activeClue;
+    private FinalRound finalRound;
+    private String lastCorrectPlayerId;
     private final Map<String, Team> teams = new LinkedHashMap<>();
     private final Map<String, Player> players = new LinkedHashMap<>();
     private final Map<String, BoardCellState> cells = new LinkedHashMap<>();
@@ -94,6 +96,22 @@ public class GameRoom {
         this.activeClue = activeClue;
     }
 
+    public FinalRound getFinalRound() {
+        return finalRound;
+    }
+
+    public void setFinalRound(FinalRound finalRound) {
+        this.finalRound = finalRound;
+    }
+
+    public String getLastCorrectPlayerId() {
+        return lastCorrectPlayerId;
+    }
+
+    public void setLastCorrectPlayerId(String lastCorrectPlayerId) {
+        this.lastCorrectPlayerId = lastCorrectPlayerId;
+    }
+
     public Map<String, Team> getTeams() {
         return teams;
     }
@@ -123,8 +141,13 @@ public class GameRoom {
         this.title = newBoard.title();
         this.questionHints = hints == null ? "" : hints.trim();
         this.cells.clear();
+        this.finalRound = null;
+        this.lastCorrectPlayerId = null;
         for (Category category : newBoard.categories()) {
             for (Clue clue : category.clues()) {
+                if (clue.finalJeopardy()) {
+                    continue;
+                }
                 cells.put(clue.id(), new BoardCellState(
                         clue.id(),
                         category.id(),
@@ -173,6 +196,9 @@ public class GameRoom {
                 }
             }
         }
+        if (board.finalJeopardy() != null && board.finalJeopardy().id().equals(clueId)) {
+            return Optional.of(board.finalJeopardy());
+        }
         return Optional.empty();
     }
 
@@ -187,17 +213,42 @@ public class GameRoom {
         return !cells.isEmpty() && cells.values().stream().allMatch(BoardCellState::answered);
     }
 
+    public boolean hasFinalJeopardy() {
+        return board != null && board.hasFinalJeopardy();
+    }
+
     /** Full snapshot for the moderator (includes answers while previewing). */
     public GameSnapshot hostSnapshot() {
-        return buildSnapshot(board, activeClue);
+        return buildSnapshot(board, activeClue, finalRound);
     }
 
     /**
      * Public/shared snapshot: answers redacted until revealed; during host preview
-     * players only see category + dollar value (no prompt).
+     * and Daily Double wager, players only see category + dollar value (no prompt).
      */
     public GameSnapshot publicSnapshot() {
-        return buildSnapshot(redactBoard(board), redactActiveClue(activeClue, phase));
+        return buildSnapshot(
+                redactBoard(board),
+                redactActiveClue(activeClue, phase),
+                redactFinal(finalRound, phase, null, false)
+        );
+    }
+
+    /**
+     * Player snapshot: same redaction as public, except the viewer's own Final
+     * wager/answer text is visible so a refresh does not lose their line.
+     */
+    public GameSnapshot playerSnapshot(String playerId) {
+        if (playerId != null && playerId.equals(hostPlayerId)) {
+            return hostSnapshot();
+        }
+        Player player = playerId == null ? null : players.get(playerId);
+        String teamId = player == null ? null : player.teamId();
+        return buildSnapshot(
+                redactBoard(board),
+                redactActiveClue(activeClue, phase),
+                redactFinal(finalRound, phase, teamId, false)
+        );
     }
 
     /** @deprecated prefer {@link #hostSnapshot()} / {@link #publicSnapshot()} */
@@ -205,7 +256,7 @@ public class GameRoom {
         return hostSnapshot();
     }
 
-    private GameSnapshot buildSnapshot(Board boardView, ActiveClue clueView) {
+    private GameSnapshot buildSnapshot(Board boardView, ActiveClue clueView, FinalRound finalView) {
         return new GameSnapshot(
                 id,
                 code,
@@ -220,7 +271,8 @@ public class GameRoom {
                 new ArrayList<>(players.values()),
                 new ArrayList<>(cells.values()),
                 questionHints,
-                List.copyOf(lockedOutPlayerIds)
+                List.copyOf(lockedOutPlayerIds),
+                finalView
         );
     }
 
@@ -240,12 +292,24 @@ public class GameRoom {
                                         null,
                                         null,
                                         null,
-                                        c.dailyDouble()
+                                        c.dailyDouble(),
+                                        c.finalJeopardy()
                                 ))
                                 .toList()
                 ))
                 .toList();
-        return new Board(source.title(), source.sourceRoot(), cats, source.graphDigest());
+        Clue fj = source.finalJeopardy();
+        Clue redactedFinal = fj == null
+                ? null
+                : new Clue(fj.id(), fj.value(), null, null, null, null, false, true);
+        return new Board(
+                source.title(),
+                source.sourceRoot(),
+                cats,
+                source.graphDigest(),
+                redactedFinal,
+                source.finalCategoryTitle()
+        );
     }
 
     private static ActiveClue redactActiveClue(ActiveClue clue, GamePhase phase) {
@@ -255,9 +319,19 @@ public class GameRoom {
         if (phase == GamePhase.HOST_PREVIEW) {
             return clue.asHostPreviewTeaser();
         }
+        if (phase == GamePhase.DD_WAGER || (clue.dailyDouble() && clue.wager() == null && !clue.responseVisible())) {
+            return clue.asDailyDoubleTeaser();
+        }
         if (clue.responseVisible()) {
             return clue;
         }
         return clue.withoutAnswer();
+    }
+
+    private static FinalRound redactFinal(FinalRound round, GamePhase phase, String teamId, boolean host) {
+        if (round == null) {
+            return null;
+        }
+        return round.redact(phase, teamId, host);
     }
 }

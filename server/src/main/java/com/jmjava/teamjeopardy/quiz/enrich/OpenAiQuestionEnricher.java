@@ -148,7 +148,8 @@ public class OpenAiQuestionEnricher implements QuestionEnricher {
                 response,
                 explanation == null ? clue.explanation() : explanation.trim(),
                 clue.sourcePath(),
-                clue.dailyDouble()
+                clue.dailyDouble(),
+                clue.finalJeopardy()
         );
     }
 
@@ -166,6 +167,7 @@ public class OpenAiQuestionEnricher implements QuestionEnricher {
                 - For coder categories, emphasize APIs, patterns, call structure, and ownership.
                 - For SPEC/REL categories, rewrite ticket paste into Jeopardy product-knowledge wording.
                   You may polish a category title's tone but must not invent issues or change answers.
+                - For Final Jeopardy, polish the prompt only. Do not grade or invent an answer.
                 - Stay grounded in the provided evidence; invent nothing.
                 - When moderator hints are provided, bias wording and emphasis toward those themes
                   without changing the fixed answer or inventing facts.

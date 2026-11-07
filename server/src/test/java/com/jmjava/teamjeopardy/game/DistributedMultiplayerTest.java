@@ -188,7 +188,8 @@ class DistributedMultiplayerTest {
         send(host.session, roomId, new GameAction("RETURN_BOARD", hostId, null, Map.of()), hostToken);
         GameSnapshot back = await(host, s -> s.phase() == GamePhase.BOARD);
 
-        // Remaining clues: reveal, raced correct, reveal. Second START must not wipe the clue.
+        // Remaining clues: reveal, raced Daily Double (typed wager), reveal.
+        // Second START must not wipe the clue.
         for (int i = 1; i < order.size(); i++) {
             RealPlayHttpSupport.ClueRef clue = order.get(i);
             send(host.session, roomId, new GameAction("SELECT_CLUE", hostId, null, Map.of("clueId", clue.id())), hostToken);
@@ -213,15 +214,35 @@ class DistributedMultiplayerTest {
             if (i == 2) {
                 send(alexAgain.session, roomId, new GameAction("BUZZ", alexId, null, Map.of()), null);
                 send(sam.session, roomId, new GameAction("BUZZ", samId, null, Map.of()), null);
-                GameSnapshot locked = await(host, s -> s.phase() == GamePhase.BUZZ_LOCKED
-                        && s.revision() > preview.revision());
-                GameSnapshot pubLocked = await(display, s -> s.phase() == GamePhase.BUZZ_LOCKED
-                        && s.revision() == locked.revision());
-                assertEquals(locked.activeClue().buzzedPlayerId(), pubLocked.activeClue().buzzedPlayerId());
-                String winner = locked.activeClue().buzzedPlayerId();
-                assertTrue(alexId.equals(winner) || samId.equals(winner));
-                send(host.session, roomId, new GameAction("JUDGE", hostId, null, Map.of("correct", true)), hostToken);
-                expected.merge(alexId.equals(winner) ? "Blue Owls" : "Red Foxes", clue.value(), Integer::sum);
+                if (clue.dailyDouble()) {
+                    GameSnapshot wagering = await(host, s -> s.phase() == GamePhase.DD_WAGER
+                            && s.revision() > preview.revision());
+                    GameSnapshot pubWager = await(display, s -> s.phase() == GamePhase.DD_WAGER
+                            && s.revision() == wagering.revision());
+                    assertEquals(wagering.activeClue().buzzedPlayerId(), pubWager.activeClue().buzzedPlayerId());
+                    String winner = wagering.activeClue().buzzedPlayerId();
+                    assertTrue(alexId.equals(winner) || samId.equals(winner));
+                    int wager = WagerRules.MIN_WAGER;
+                    StompSession winnerSession = alexId.equals(winner) ? alexAgain.session : sam.session;
+                    send(winnerSession, roomId, new GameAction(
+                            "SET_WAGER", winner, null, Map.of("amount", wager)), null);
+                    GameSnapshot locked = await(host, s -> s.phase() == GamePhase.BUZZ_LOCKED
+                            && s.activeClue() != null
+                            && Integer.valueOf(wager).equals(s.activeClue().wager()));
+                    assertEquals(winner, locked.activeClue().buzzedPlayerId());
+                    send(host.session, roomId, new GameAction("JUDGE", hostId, null, Map.of("correct", true)), hostToken);
+                    expected.merge(alexId.equals(winner) ? "Blue Owls" : "Red Foxes", wager, Integer::sum);
+                } else {
+                    GameSnapshot locked = await(host, s -> s.phase() == GamePhase.BUZZ_LOCKED
+                            && s.revision() > preview.revision());
+                    GameSnapshot pubLocked = await(display, s -> s.phase() == GamePhase.BUZZ_LOCKED
+                            && s.revision() == locked.revision());
+                    assertEquals(locked.activeClue().buzzedPlayerId(), pubLocked.activeClue().buzzedPlayerId());
+                    String winner = locked.activeClue().buzzedPlayerId();
+                    assertTrue(alexId.equals(winner) || samId.equals(winner));
+                    send(host.session, roomId, new GameAction("JUDGE", hostId, null, Map.of("correct", true)), hostToken);
+                    expected.merge(alexId.equals(winner) ? "Blue Owls" : "Red Foxes", clue.value(), Integer::sum);
+                }
             } else {
                 send(host.session, roomId, new GameAction("REVEAL", hostId, null, Map.of()), hostToken);
             }

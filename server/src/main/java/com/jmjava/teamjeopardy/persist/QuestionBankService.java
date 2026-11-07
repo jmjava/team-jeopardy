@@ -67,6 +67,9 @@ public class QuestionBankService {
                 : board.categories().stream()
                 .mapToInt(c -> c.clues() == null ? 0 : c.clues().size())
                 .sum();
+        if (board.finalJeopardy() != null) {
+            clues++;
+        }
 
         Map<String, Object> summary = ingestSummary == null
                 ? new LinkedHashMap<>()
@@ -143,11 +146,14 @@ public class QuestionBankService {
         if (cats.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "at least one category with clues is required");
         }
+        Clue liftedFinal = liftFinal(cats);
         Board board = new Board(
                 title.trim(),
                 sourceRoot == null ? "" : sourceRoot.trim(),
                 cats,
-                digest == null ? new Board.GraphDigest(0, 0, 0, 0, 0) : digest
+                digest == null ? new Board.GraphDigest(0, 0, 0, 0, 0) : digest,
+                liftedFinal,
+                liftedFinal == null ? null : "Final Jeopardy"
         );
         Map<String, Object> summary = new LinkedHashMap<>();
         summary.put("source", "manual");
@@ -294,12 +300,7 @@ public class QuestionBankService {
             categories.add(new Category(catId, catTitle, List.of(clue)));
         }
 
-        Board updated = new Board(
-                existing.board().title(),
-                existing.board().sourceRoot(),
-                categories,
-                existing.board().graphDigest()
-        );
+        Board updated = copyBoard(existing.board(), categories);
         repository.updateBoardContent(boardId, updated, Instant.now());
 
         SavedClueRecord row = new SavedClueRecord(
@@ -313,7 +314,8 @@ public class QuestionBankService {
                 clue.response(),
                 clue.explanation(),
                 clue.sourcePath(),
-                clue.dailyDouble()
+                clue.dailyDouble(),
+                clue.finalJeopardy()
         );
         return repository.insertClue(row);
     }
@@ -341,12 +343,7 @@ public class QuestionBankService {
             return repository.delete(board.id());
         }
 
-        Board updated = new Board(
-                board.board().title(),
-                board.board().sourceRoot(),
-                categories,
-                board.board().graphDigest()
-        );
+        Board updated = copyBoard(board.board(), categories);
         repository.updateBoardContent(board.id(), updated, Instant.now());
         return repository.deleteClueRow(clueRowId);
     }
@@ -392,7 +389,8 @@ public class QuestionBankService {
                         clue.response().trim(),
                         clue.explanation() == null ? "" : clue.explanation().trim(),
                         clue.sourcePath() == null ? "" : clue.sourcePath().trim(),
-                        clue.dailyDouble()
+                        clue.dailyDouble(),
+                        clue.finalJeopardy()
                 ));
                 clueSeq++;
             }
@@ -402,6 +400,31 @@ public class QuestionBankService {
             }
         }
         return out;
+    }
+
+    private static Board copyBoard(Board source, List<Category> categories) {
+        return new Board(
+                source.title(),
+                source.sourceRoot(),
+                categories,
+                source.graphDigest(),
+                source.finalJeopardy(),
+                source.finalCategoryTitle()
+        );
+    }
+
+    private static Clue liftFinal(List<Category> categories) {
+        for (Category category : categories) {
+            if (category.clues() == null) {
+                continue;
+            }
+            for (Clue clue : category.clues()) {
+                if (clue.finalJeopardy()) {
+                    return clue.asFinal();
+                }
+            }
+        }
+        return null;
     }
 
     private static String slug(String title) {

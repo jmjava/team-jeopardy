@@ -29,6 +29,12 @@ const phaseLabel = {
   CLUE_OPEN: 'Buzzers open',
   BUZZ_LOCKED: 'Buzz locked',
   ANSWER_REVEALED: 'Answer',
+  DD_WAGER: 'Daily Double wager',
+  FINAL_CATEGORY: 'Final category',
+  FINAL_WAGER: 'Final wagers',
+  FINAL_WRITING: 'Final writing',
+  FINAL_LOCKED: 'Answers locked',
+  FINAL_REVEALED: 'Final reveal',
   FINISHED: 'Finished'
 }
 </script>

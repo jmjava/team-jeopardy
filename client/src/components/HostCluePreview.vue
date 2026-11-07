@@ -1,9 +1,13 @@
 <script setup>
 defineProps({
-  clue: Object
+  clue: Object,
+  players: {
+    type: Array,
+    default: () => []
+  }
 })
 
-defineEmits(['open', 'reveal', 'back'])
+defineEmits(['open', 'reveal', 'back', 'select-wagerer'])
 </script>
 
 <template>
@@ -25,15 +29,34 @@ defineEmits(['open', 'reveal', 'back'])
         <p class="label">Correct response</p>
         <h3>{{ clue.response }}</h3>
         <p class="muted">{{ clue.explanation }}</p>
-        <p class="note">Players only see category and value until you open buzzers. They must answer in the form of a question.</p>
+        <p class="note">
+          <template v-if="clue.dailyDouble">
+            Daily Double: the selected player wagers before anyone sees the clue.
+            Correct or incorrect applies the wager, not the cell face value.
+          </template>
+          <template v-else>
+            Players only see category and value until you open buzzers. They must answer in the form of a question.
+          </template>
+        </p>
       </aside>
     </div>
 
     <div class="actions">
       <button class="ok large" @click="$emit('open')">
-        Show clue &amp; open buzzers
+        {{ clue.dailyDouble ? 'Open Daily Double buzzers' : 'Show clue & open buzzers' }}
         <span class="key" aria-hidden="true">Enter</span>
       </button>
+      <template v-if="clue.dailyDouble">
+        <button
+          v-for="player in players"
+          :key="player.id"
+          class="secondary"
+          :data-testid="'select-wagerer-' + player.id"
+          @click="$emit('select-wagerer', player.id)"
+        >
+          Give Daily Double to {{ player.displayName }}
+        </button>
+      </template>
       <button class="secondary" @click="$emit('reveal')">
         Skip to reveal
         <span class="key" aria-hidden="true">R</span>

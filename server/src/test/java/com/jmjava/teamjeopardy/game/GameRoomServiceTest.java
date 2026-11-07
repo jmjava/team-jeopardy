@@ -34,6 +34,7 @@ class GameRoomServiceTest {
         service = new GameRoomService();
         ReflectionTestUtils.setField(service, "maxTeams", 6);
         ReflectionTestUtils.setField(service, "maxPlayersPerTeam", 8);
+        ReflectionTestUtils.setField(service, "finalWritingSeconds", 30);
     }
 
     @Test
@@ -307,6 +308,129 @@ class GameRoomServiceTest {
         assertTrue(service.findByCode("  " + code.toLowerCase() + " ").isPresent());
     }
 
+    @Test
+    void dailyDoubleUsesTypedWagerNotFaceValue() {
+        var created = service.createRoom("Pat", "DD");
+        String roomId = created.snapshot().roomId();
+        String hostId = created.hostPlayerId();
+        var joined = service.joinRoom(created.snapshot().code(), "Alex", "Blue");
+        service.admitPlayer(roomId, hostId, joined.playerId());
+        service.installBoard(roomId, hostId, dailyDoubleBoard("c1"));
+        service.startGame(roomId, hostId);
+        service.selectClue(roomId, hostId, "c1");
+        service.openBuzzers(roomId, hostId);
+
+        GameSnapshot claimed = service.buzz(roomId, joined.playerId());
+        assertEquals(GamePhase.DD_WAGER, claimed.phase());
+        assertNull(service.publicSnapshot(roomId).activeClue().prompt());
+
+        GameSnapshot wagered = service.setWager(roomId, joined.playerId(), 400);
+        assertEquals(GamePhase.BUZZ_LOCKED, wagered.phase());
+        assertEquals(400, wagered.activeClue().wager());
+        assertEquals("prompt text", service.publicSnapshot(roomId).activeClue().prompt());
+
+        GameSnapshot judged = service.judge(roomId, hostId, true);
+        assertEquals(400, judged.teams().getFirst().score());
+        assertEquals(GamePhase.ANSWER_REVEALED, judged.phase());
+    }
+
+    @Test
+    void dailyDoubleMissAppliesWagerAndDoesNotReopen() {
+        var created = service.createRoom("Pat", "DD miss");
+        String roomId = created.snapshot().roomId();
+        String hostId = created.hostPlayerId();
+        var alex = service.joinRoom(created.snapshot().code(), "Alex", "Blue");
+        var sam = service.joinRoom(created.snapshot().code(), "Sam", "Red");
+        service.admitAll(roomId, hostId);
+        service.installBoard(roomId, hostId, dailyDoubleBoard("c1"));
+        service.startGame(roomId, hostId);
+        service.selectClue(roomId, hostId, "c1");
+        service.selectWagerer(roomId, hostId, alex.playerId());
+        service.setWager(roomId, alex.playerId(), 5);
+        GameSnapshot judged = service.judge(roomId, hostId, false);
+        assertEquals(-5, judged.teams().stream().filter(t -> t.name().equals("Blue")).findFirst().orElseThrow().score());
+        assertEquals(GamePhase.ANSWER_REVEALED, judged.phase());
+        assertThrows(ResponseStatusException.class, () -> service.buzz(roomId, sam.playerId()));
+    }
+
+    @Test
+    void zeroScoreDailyDoubleAllowsUpToOneThousand() {
+        var created = service.createRoom("Pat", "DD zero");
+        String roomId = created.snapshot().roomId();
+        String hostId = created.hostPlayerId();
+        var alex = service.joinRoom(created.snapshot().code(), "Alex", "Blue");
+        service.admitPlayer(roomId, hostId, alex.playerId());
+        service.installBoard(roomId, hostId, dailyDoubleBoard("c1"));
+        service.startGame(roomId, hostId);
+        service.selectClue(roomId, hostId, "c1");
+        service.openBuzzers(roomId, hostId);
+        service.buzz(roomId, alex.playerId());
+        assertThrows(ResponseStatusException.class, () -> service.setWager(roomId, alex.playerId(), 4));
+        GameSnapshot ok = service.setWager(roomId, alex.playerId(), 1000);
+        assertEquals(1000, ok.activeClue().wager());
+    }
+
+    @Test
+    void typedFinalOneRightOneWrongAppliesWagersAndHidesTextUntilReveal() {
+        var created = service.createRoom("Pat", "Final");
+        String roomId = created.snapshot().roomId();
+        String hostId = created.hostPlayerId();
+        var alex = service.joinRoom(created.snapshot().code(), "Alex", "Blue");
+        var sam = service.joinRoom(created.snapshot().code(), "Sam", "Red");
+        service.admitAll(roomId, hostId);
+        service.installBoard(roomId, hostId, finalBoard());
+        service.startGame(roomId, hostId);
+
+        GameSnapshot category = service.startFinal(roomId, hostId);
+        assertEquals(GamePhase.FINAL_CATEGORY, category.phase());
+        assertEquals("Release epic", category.finalRound().categoryTitle());
+        assertNull(service.publicSnapshot(roomId).finalRound().prompt());
+
+        service.startFinalWager(roomId, hostId);
+        service.setWager(roomId, alex.playerId(), 200);
+        service.setWager(roomId, sam.playerId(), 50);
+
+        GameSnapshot writing = service.startFinalWriting(roomId, hostId, 30);
+        assertEquals(GamePhase.FINAL_WRITING, writing.phase());
+        assertNotNull(service.publicSnapshot(roomId).finalRound().prompt());
+
+        service.setFinalAnswer(roomId, alex.playerId(), "What is PROJ-1?");
+        service.setFinalAnswer(roomId, sam.playerId(), "What is SHOP-9?");
+
+        GameSnapshot publicWriting = service.publicSnapshot(roomId);
+        assertTrue(publicWriting.finalRound().entries().stream().noneMatch(e ->
+                e.answer() != null && !e.answer().isBlank()));
+
+        GameSnapshot alexView = service.requireSnapshot(roomId, alex.playerId());
+        assertEquals("What is PROJ-1?", alexView.finalRound().entries().stream()
+                .filter(e -> e.teamName().equals("Blue"))
+                .findFirst().orElseThrow().answer());
+        assertTrue(alexView.finalRound().entries().stream()
+                .filter(e -> e.teamName().equals("Red"))
+                .findFirst().orElseThrow().answer() == null
+                || alexView.finalRound().entries().stream()
+                .filter(e -> e.teamName().equals("Red"))
+                .findFirst().orElseThrow().answer().isBlank());
+
+        service.lockFinalAnswers(roomId, hostId);
+        GameSnapshot locked = service.publicSnapshot(roomId);
+        assertEquals(GamePhase.FINAL_LOCKED, locked.phase());
+        assertTrue(locked.finalRound().entries().stream().allMatch(FinalEntry::answerLocked));
+        assertTrue(locked.finalRound().entries().stream().allMatch(e -> e.answer() == null || e.answer().isBlank()));
+
+        service.revealAnswer(roomId, hostId);
+        String blueId = service.hostSnapshot(roomId).teams().stream()
+                .filter(t -> t.name().equals("Blue")).findFirst().orElseThrow().id();
+        String redId = service.hostSnapshot(roomId).teams().stream()
+                .filter(t -> t.name().equals("Red")).findFirst().orElseThrow().id();
+        service.judgeFinal(roomId, hostId, blueId, true);
+        GameSnapshot done = service.judgeFinal(roomId, hostId, redId, false);
+        assertEquals(GamePhase.FINISHED, done.phase());
+        assertEquals(200, done.teams().stream().filter(t -> t.name().equals("Blue")).findFirst().orElseThrow().score());
+        assertEquals(-50, done.teams().stream().filter(t -> t.name().equals("Red")).findFirst().orElseThrow().score());
+        assertNotNull(service.publicSnapshot(roomId).finalRound().response());
+    }
+
     private static Board demoBoard(String clueId) {
         return new Board(
                 "Demo",
@@ -317,6 +441,34 @@ class GameRoomServiceTest {
                         List.of(new Clue(clueId, 200, "prompt text", "What is x?", "why", null, false))
                 )),
                 new Board.GraphDigest(1, 1, 1, 1, 1)
+        );
+    }
+
+    private static Board dailyDoubleBoard(String clueId) {
+        return new Board(
+                "Demo",
+                "/tmp",
+                List.of(new Category(
+                        "cat",
+                        "TEST",
+                        List.of(new Clue(clueId, 800, "prompt text", "What is x?", "why", null, true))
+                )),
+                new Board.GraphDigest(1, 1, 1, 1, 1)
+        );
+    }
+
+    private static Board finalBoard() {
+        return new Board(
+                "Demo",
+                "/tmp",
+                List.of(new Category(
+                        "cat",
+                        "TEST",
+                        List.of(new Clue("c1", 200, "grid prompt", "What is grid?", "why", null, false))
+                )),
+                new Board.GraphDigest(1, 1, 1, 1, 1),
+                new Clue("final-1", 0, "Final prompt about the release", "What is PROJ-1?", "grounded", "PROJ-1", false, true),
+                "Release epic"
         );
     }
 }

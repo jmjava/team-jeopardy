@@ -4,6 +4,7 @@ import { appName } from '../theme'
 import Scorebar from './Scorebar.vue'
 import BoardView from './BoardView.vue'
 import ClueStage from './ClueStage.vue'
+import FinalStage from './FinalStage.vue'
 
 const props = defineProps({
   snapshot: Object
@@ -11,11 +12,16 @@ const props = defineProps({
 
 const phase = computed(() => props.snapshot?.phase || 'LOBBY')
 const clue = computed(() => props.snapshot?.activeClue)
+const showFinal = computed(() =>
+  ['FINAL_CATEGORY', 'FINAL_WAGER', 'FINAL_WRITING', 'FINAL_LOCKED', 'FINAL_REVEALED'].includes(phase.value)
+)
 const showBoard = computed(() =>
-  ['BOARD', 'FINISHED', 'LOBBY'].includes(phase.value) || !clue.value
+  !showFinal.value && (['BOARD', 'FINISHED', 'LOBBY'].includes(phase.value) || !clue.value)
 )
 const showClue = computed(() =>
-  ['HOST_PREVIEW', 'CLUE_OPEN', 'BUZZ_LOCKED', 'ANSWER_REVEALED'].includes(phase.value) && !!clue.value
+  !showFinal.value
+  && ['HOST_PREVIEW', 'CLUE_OPEN', 'DD_WAGER', 'BUZZ_LOCKED', 'ANSWER_REVEALED'].includes(phase.value)
+  && !!clue.value
 )
 </script>
 
@@ -46,6 +52,14 @@ const showClue = computed(() =>
       :is-host="false"
       :finished="phase === 'FINISHED'"
       display
+    />
+
+    <FinalStage
+      v-else-if="showFinal"
+      :snapshot="snapshot"
+      :phase="phase"
+      is-display
+      :is-host="false"
     />
 
     <ClueStage

@@ -23,6 +23,7 @@ import QuestionBankAdmin from './components/QuestionBankAdmin.vue'
 import WaitingRoom from './components/WaitingRoom.vue'
 import BoardView from './components/BoardView.vue'
 import ClueStage from './components/ClueStage.vue'
+import FinalStage from './components/FinalStage.vue'
 import HostCluePreview from './components/HostCluePreview.vue'
 import Scorebar from './components/Scorebar.vue'
 import SharedDisplay from './components/SharedDisplay.vue'
@@ -77,11 +78,18 @@ const showHostPreview = computed(
   () => session.isHost && phase.value === 'HOST_PREVIEW' && snapshot.value?.activeClue
 )
 const showClue = computed(() =>
-  ['CLUE_OPEN', 'BUZZ_LOCKED', 'ANSWER_REVEALED'].includes(phase.value)
+  ['CLUE_OPEN', 'DD_WAGER', 'BUZZ_LOCKED', 'ANSWER_REVEALED'].includes(phase.value)
   || (!session.isHost && phase.value === 'HOST_PREVIEW')
 )
 const showBoard = computed(() =>
   admitted.value && (phase.value === 'BOARD' || phase.value === 'FINISHED')
+)
+const showFinal = computed(() =>
+  admitted.value && ['FINAL_CATEGORY', 'FINAL_WAGER', 'FINAL_WRITING', 'FINAL_LOCKED', 'FINAL_REVEALED'].includes(phase.value)
+)
+const myTeamId = computed(() => me.value?.teamId || '')
+const admittedPlayers = computed(() =>
+  (snapshot.value?.players || []).filter((p) => !p.host && p.admitted && p.teamId)
 )
 const displayUrl = computed(() => {
   if (!session.roomId) return ''
@@ -688,12 +696,31 @@ onBeforeUnmount(() => {
           :is-host="session.isHost"
           :finished="phase === 'FINISHED'"
           @select="(clueId) => runAction('SELECT_CLUE', { clueId })"
+          @final="runAction('START_FINAL')"
+        />
+
+        <FinalStage
+          v-else-if="showFinal"
+          :snapshot="snapshot"
+          :phase="phase"
+          :is-host="session.isHost"
+          :player-id="session.playerId"
+          :team-id="myTeamId"
+          @start-wager="runAction('START_FINAL_WAGER')"
+          @start-writing="runAction('START_FINAL_WRITING', { seconds: 30 })"
+          @set-wager="(amount) => runAction('SET_WAGER', { amount })"
+          @set-answer="(text) => runAction('SET_FINAL_ANSWER', { text })"
+          @end-writing="runAction('LOCK_FINAL_ANSWERS')"
+          @reveal="runAction('REVEAL')"
+          @judge="(payload) => runAction('JUDGE_FINAL', payload)"
         />
 
         <HostCluePreview
           v-else-if="showHostPreview"
           :clue="snapshot?.activeClue"
+          :players="admittedPlayers"
           @open="runAction('OPEN_BUZZERS')"
+          @select-wagerer="(playerId) => runAction('SELECT_WAGERER', { playerId })"
           @reveal="runAction('REVEAL')"
           @back="runAction('RETURN_BOARD')"
         />
@@ -705,7 +732,11 @@ onBeforeUnmount(() => {
           :is-host="session.isHost"
           :can-buzz="admitted && !session.isHost && !lockedOut"
           :locked-out="lockedOut"
+          :player-id="session.playerId"
+          :team-id="myTeamId"
+          :teams="snapshot?.teams || []"
           @buzz="runAction('BUZZ')"
+          @wager="(amount) => runAction('SET_WAGER', { amount })"
           @judge="(correct) => runAction('JUDGE', { correct })"
           @reveal="runAction('REVEAL')"
           @back="runAction('RETURN_BOARD')"
