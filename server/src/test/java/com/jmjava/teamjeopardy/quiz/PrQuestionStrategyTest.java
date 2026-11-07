@@ -56,4 +56,41 @@ class PrQuestionStrategyTest {
                 .flatMap(c -> c.clues().stream())
                 .anyMatch(c -> c.response().contains("#12") || c.prompt().contains("buzzer")));
     }
+
+    @Test
+    void aPromptThatRepeatsTheAnswerIsNotDealt() {
+        CodeGraph graph = new CodeGraph("github:acme/demo");
+        graph.setProjectKind(ProjectKind.GENERIC);
+        graph.setProjectName("acme/demo");
+        graph.setPullRequests(List.of(
+                fact(12, "Ship PR #12", "The title is the answer."),
+                fact(4, "Harden the parser", "No answer in the title.")
+        ));
+
+        QuestionGenerator generator = new QuestionGenerator(
+                List.of(new PrQuestionStrategy()),
+                new PassthroughQuestionEnricher(),
+                "coder,qa",
+                6
+        );
+        List<Clue> clues = generator.generate(graph, "PR Board").categories().stream()
+                .flatMap(category -> category.clues().stream())
+                .toList();
+
+        assertTrue(clues.stream().noneMatch(clue -> JeopardyStyle.promptLeaksAnswer(clue.prompt(), clue.response())));
+        assertTrue(clues.stream().anyMatch(clue -> clue.prompt().contains("Harden the parser")));
+    }
+
+    private static PullRequestFact fact(int number, String title, String body) {
+        return new PullRequestFact(
+                number, title, "ada", "closed", true,
+                body,
+                List.of(),
+                List.of("src/Main.java"),
+                10, 2, 1,
+                "https://github.com/acme/demo/pull/" + number,
+                Instant.parse("2026-07-01T12:00:00Z"),
+                "main", "feat/x"
+        );
+    }
 }

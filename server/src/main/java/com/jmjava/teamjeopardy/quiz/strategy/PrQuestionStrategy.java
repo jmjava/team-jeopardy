@@ -64,7 +64,7 @@ public class PrQuestionStrategy implements QuestionStrategy {
                     "Author " + pr.author() + (pr.merged() ? " · merged" : " · " + pr.state()),
                     pr.htmlUrl()));
         }
-        return new Category("cat-pr-titles", "PR: NAME THAT PULL", clues);
+        return category("cat-pr-titles", "PR: NAME THAT PULL", clues);
     }
 
     private Category buildAuthors(List<PullRequestFact> prs, AtomicInteger seq) {
@@ -85,7 +85,7 @@ public class PrQuestionStrategy implements QuestionStrategy {
                 JeopardyStyle.whoIs(pr.author()),
                 pr.merged() ? "Merged into " + nullTo(pr.baseRef(), "main") : "State: " + pr.state(),
                 pr.htmlUrl())));
-        return new Category("cat-pr-authors", "PR: WHO SHIPPED IT", clues);
+        return category("cat-pr-authors", "PR: WHO SHIPPED IT", clues);
     }
 
     private Category buildFiles(List<PullRequestFact> prs, AtomicInteger seq) {
@@ -117,7 +117,7 @@ public class PrQuestionStrategy implements QuestionStrategy {
                             pr.title(),
                             pr.htmlUrl()));
                 });
-        return new Category("cat-pr-files", "PR: FILES TOUCHED", clues);
+        return category("cat-pr-files", "PR: FILES TOUCHED", clues);
     }
 
     private Category buildQaRisk(List<PullRequestFact> prs, AtomicInteger seq) {
@@ -152,7 +152,7 @@ public class PrQuestionStrategy implements QuestionStrategy {
                     "Open && !merged count.",
                     null));
         }
-        return new Category("cat-pr-qa", "QA: PR RISK", clues);
+        return category("cat-pr-qa", "QA: PR RISK", clues);
     }
 
     private Category buildMergeFacts(List<PullRequestFact> prs, AtomicInteger seq) {
@@ -188,7 +188,14 @@ public class PrQuestionStrategy implements QuestionStrategy {
                         JeopardyStyle.whatIs("PR #" + pr.number()),
                         pr.title(),
                         pr.htmlUrl())));
-        return new Category("cat-pr-merge", "PR: MERGE MATH", clues);
+        return category("cat-pr-merge", "PR: MERGE MATH", clues);
+    }
+
+    private static Category category(String id, String title, List<Clue> clues) {
+        List<Clue> safe = clues.stream()
+                .filter(clue -> !JeopardyStyle.promptLeaksAnswer(clue.prompt(), clue.response()))
+                .toList();
+        return new Category(id, title, safe);
     }
 
     private static Clue clue(AtomicInteger seq, String prompt, String response, String explanation, String source) {
