@@ -219,7 +219,7 @@ public class GameRoom {
 
     /** Full snapshot for the moderator (includes answers while previewing). */
     public GameSnapshot hostSnapshot() {
-        return buildSnapshot(board, activeClue, finalRound, new ArrayList<>(cells.values()));
+        return buildSnapshot(board, activeClue, finalRound, new ArrayList<>(cells.values()), questionHints);
     }
 
     /**
@@ -232,7 +232,8 @@ public class GameRoom {
                 redactBoard(board),
                 redactActiveClue(activeClue, phase),
                 redactFinal(finalRound, phase, null, false),
-                concealDailyDoubles()
+                concealDailyDoubles(),
+                ""
         );
     }
 
@@ -252,7 +253,8 @@ public class GameRoom {
                 redactBoard(board),
                 redactActiveClue(activeClue, phase),
                 redactFinal(finalRound, phase, teamId, false),
-                concealDailyDoubles()
+                concealDailyDoubles(),
+                ""
         );
     }
 
@@ -265,7 +267,8 @@ public class GameRoom {
             Board boardView,
             ActiveClue clueView,
             FinalRound finalView,
-            List<BoardCellState> cellView
+            List<BoardCellState> cellView,
+            String hintsView
     ) {
         return new GameSnapshot(
                 id,
@@ -280,7 +283,7 @@ public class GameRoom {
                 new ArrayList<>(teams.values()),
                 new ArrayList<>(players.values()),
                 cellView,
-                questionHints,
+                hintsView == null ? "" : hintsView,
                 List.copyOf(lockedOutPlayerIds),
                 finalView
         );
