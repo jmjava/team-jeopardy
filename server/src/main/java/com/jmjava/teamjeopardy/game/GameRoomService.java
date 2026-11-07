@@ -375,7 +375,7 @@ public class GameRoomService {
                 throw notFound("Buzzed team missing");
             }
             int delta = active.scoreDelta();
-            int nextScore = correct ? team.score() + delta : team.score() - delta;
+            int nextScore = ScoreMath.apply(team.score(), delta, correct);
             room.getTeams().put(team.id(), team.withScore(nextScore));
 
             if (correct) {
@@ -555,7 +555,7 @@ public class GameRoomService {
                         throw conflict("This team has already been judged");
                     }
                     int wager = entry.wager() == null ? 0 : entry.wager();
-                    int nextScore = correct ? team.score() + wager : team.score() - wager;
+                    int nextScore = ScoreMath.apply(team.score(), wager, correct);
                     room.getTeams().put(team.id(), team.withScore(nextScore));
                     next.add(entry.withJudgement(correct));
                     found = true;
