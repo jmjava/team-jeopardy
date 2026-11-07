@@ -828,6 +828,9 @@ public class GameRoomService {
     }
 
     private Team ensureTeam(GameRoom room, String teamName) {
+        if (room.getPhase() != GamePhase.LOBBY) {
+            throw conflict("Teams can only be chosen in the lobby");
+        }
         Optional<Team> existing = room.getTeams().values().stream()
                 .filter(t -> t.name().equalsIgnoreCase(teamName))
                 .findFirst();
