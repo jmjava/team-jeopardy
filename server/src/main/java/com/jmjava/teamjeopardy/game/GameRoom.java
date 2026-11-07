@@ -235,15 +235,17 @@ public class GameRoom {
     }
 
     /**
-     * Player snapshot: same redaction as public, except the viewer's own Final
-     * wager/answer text is visible so a refresh does not lose their line.
+     * Player snapshot: same redaction as public, except an admitted viewer's
+     * own Final wager/answer text is visible so a refresh does not lose their line.
+     * Sitting on a team in the lobby is not enough; only an admitted player
+     * may see that team's sealed line.
      */
     public GameSnapshot playerSnapshot(String playerId) {
         if (playerId != null && playerId.equals(hostPlayerId)) {
             return hostSnapshot();
         }
         Player player = playerId == null ? null : players.get(playerId);
-        String teamId = player == null ? null : player.teamId();
+        String teamId = player != null && player.admitted() ? player.teamId() : null;
         return buildSnapshot(
                 redactBoard(board),
                 redactActiveClue(activeClue, phase),
