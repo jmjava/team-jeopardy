@@ -3,6 +3,7 @@ package com.jmjava.teamjeopardy.ingest.osgi;
 import com.jmjava.teamjeopardy.graph.CodeEdge;
 import com.jmjava.teamjeopardy.graph.CodeGraph;
 import com.jmjava.teamjeopardy.graph.CodeNode;
+import com.jmjava.teamjeopardy.ingest.IngestedTree;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
@@ -26,7 +27,7 @@ public class OsgiManifestParser {
     public boolean hasOsgiMarkers(Path root) throws IOException {
         try (Stream<Path> walk = Files.walk(root, 8)) {
             return walk
-                    .filter(Files::isRegularFile)
+                    .filter(p -> IngestedTree.isContainedRegularFile(root, p))
                     .anyMatch(p -> {
                         String name = p.getFileName().toString();
                         if ("bnd.bnd".equals(name)) {
@@ -44,7 +45,7 @@ public class OsgiManifestParser {
         }
         int count = 0;
         try (Stream<Path> walk = Files.walk(root)) {
-            for (Path path : walk.filter(Files::isRegularFile)
+            for (Path path : walk.filter(p -> IngestedTree.isContainedRegularFile(root, p))
                     .filter(p -> {
                         String relative = root.relativize(p).toString().replace('\\', '/');
                         return relative.endsWith("META-INF/MANIFEST.MF")
@@ -57,7 +58,7 @@ public class OsgiManifestParser {
             }
         }
         try (Stream<Path> walk = Files.walk(root)) {
-            for (Path path : walk.filter(Files::isRegularFile)
+            for (Path path : walk.filter(p -> IngestedTree.isContainedRegularFile(root, p))
                     .filter(p -> "bnd.bnd".equals(p.getFileName().toString()))
                     .toList()) {
                 if (parseBnd(graph, root, path)) {
