@@ -219,18 +219,20 @@ public class GameRoom {
 
     /** Full snapshot for the moderator (includes answers while previewing). */
     public GameSnapshot hostSnapshot() {
-        return buildSnapshot(board, activeClue, finalRound);
+        return buildSnapshot(board, activeClue, finalRound, new ArrayList<>(cells.values()));
     }
 
     /**
      * Public/shared snapshot: answers redacted until revealed; during host preview
      * and Daily Double wager, players only see category + dollar value (no prompt).
+     * Unplayed Daily Double squares are not marked.
      */
     public GameSnapshot publicSnapshot() {
         return buildSnapshot(
                 redactBoard(board),
                 redactActiveClue(activeClue, phase),
-                redactFinal(finalRound, phase, null, false)
+                redactFinal(finalRound, phase, null, false),
+                concealDailyDoubles()
         );
     }
 
@@ -249,7 +251,8 @@ public class GameRoom {
         return buildSnapshot(
                 redactBoard(board),
                 redactActiveClue(activeClue, phase),
-                redactFinal(finalRound, phase, teamId, false)
+                redactFinal(finalRound, phase, teamId, false),
+                concealDailyDoubles()
         );
     }
 
@@ -258,7 +261,12 @@ public class GameRoom {
         return hostSnapshot();
     }
 
-    private GameSnapshot buildSnapshot(Board boardView, ActiveClue clueView, FinalRound finalView) {
+    private GameSnapshot buildSnapshot(
+            Board boardView,
+            ActiveClue clueView,
+            FinalRound finalView,
+            List<BoardCellState> cellView
+    ) {
         return new GameSnapshot(
                 id,
                 code,
@@ -271,11 +279,30 @@ public class GameRoom {
                 clueView,
                 new ArrayList<>(teams.values()),
                 new ArrayList<>(players.values()),
-                new ArrayList<>(cells.values()),
+                cellView,
                 questionHints,
                 List.copyOf(lockedOutPlayerIds),
                 finalView
         );
+    }
+
+    /** Contestants learn a square is a Daily Double when it is selected, not from the grid. */
+    private List<BoardCellState> concealDailyDoubles() {
+        List<BoardCellState> view = new ArrayList<>();
+        for (BoardCellState cell : cells.values()) {
+            if (!cell.dailyDouble()) {
+                view.add(cell);
+                continue;
+            }
+            view.add(new BoardCellState(
+                    cell.clueId(),
+                    cell.categoryId(),
+                    cell.value(),
+                    cell.answered(),
+                    false
+            ));
+        }
+        return view;
     }
 
     private static Board redactBoard(Board source) {
@@ -294,7 +321,7 @@ public class GameRoom {
                                         null,
                                         null,
                                         null,
-                                        c.dailyDouble(),
+                                        false,
                                         c.finalJeopardy()
                                 ))
                                 .toList()
