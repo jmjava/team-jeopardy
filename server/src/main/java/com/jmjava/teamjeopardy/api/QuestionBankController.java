@@ -119,6 +119,7 @@ public class QuestionBankController {
                             c.put("explanation", clue.explanation());
                             c.put("sourcePath", clue.sourcePath());
                             c.put("dailyDouble", clue.dailyDouble());
+                            c.put("finalJeopardy", clue.finalJeopardy());
                             clues.add(c);
                         }
                     }
@@ -345,7 +346,8 @@ public class QuestionBankController {
                             clue.response(),
                             clue.explanation(),
                             clue.sourcePath(),
-                            Boolean.TRUE.equals(clue.dailyDouble())
+                            Boolean.TRUE.equals(clue.dailyDouble()),
+                            Boolean.TRUE.equals(clue.finalJeopardy())
                     ));
                 }
             }

@@ -39,6 +39,94 @@ public class JiraReleaseQuestionStrategy {
         return List.copyOf(categories);
     }
 
+    /**
+     * Extra Final Jeopardy clue (not a grid cell). Prefers leftover / shared /
+     * cross-project stories, then the richest Story/Epic on the release.
+     */
+    public FinalSelection pickFinal(List<JiraCategoryBucket> buckets, AtomicInteger clueSeq) {
+        if (buckets == null || buckets.isEmpty()) {
+            return null;
+        }
+        AtomicInteger seq = clueSeq == null ? new AtomicInteger(1) : clueSeq;
+        JiraIssueFact issue = pickFinalIssue(buckets);
+        if (issue == null) {
+            return null;
+        }
+        String categoryTitle = !issue.epic().isBlank()
+                ? issue.epic()
+                : (!issue.projectLabel().isBlank() ? issue.projectLabel() : "This release");
+        String body = issue.hasAcceptance() ? issue.acceptance() : issue.description();
+        if (body.isBlank()) {
+            body = issue.summary();
+        }
+        String type = issue.issueType().isBlank() ? "issue" : issue.issueType();
+        Clue clue = new Clue(
+                "c" + seq.getAndIncrement(),
+                0,
+                "This " + type + " from the release:\n" + excerpt(body, 220),
+                "What is " + issue.key() + "?",
+                grounded(issue, issue.hasAcceptance() ? "acceptance" : "summary"),
+                issue.key(),
+                false,
+                true
+        );
+        return new FinalSelection(clue, categoryTitle, issue.key());
+    }
+
+    public record FinalSelection(Clue clue, String categoryTitle, String issueKey) {
+    }
+
+    static JiraIssueFact pickFinalIssue(List<JiraCategoryBucket> buckets) {
+        JiraIssueFact best = null;
+        int bestScore = Integer.MIN_VALUE;
+        for (JiraCategoryBucket bucket : buckets) {
+            if (bucket.issues() == null) {
+                continue;
+            }
+            int bucketBonus = crossProjectBonus(bucket);
+            for (JiraIssueFact issue : bucket.issues()) {
+                int score = bucketBonus + issueScore(issue);
+                if (score > bestScore) {
+                    bestScore = score;
+                    best = issue;
+                }
+            }
+        }
+        return best;
+    }
+
+    static int crossProjectBonus(JiraCategoryBucket bucket) {
+        String dimension = bucket.dimension() == null ? "" : bucket.dimension();
+        if ("leftover".equals(dimension) || "shared".equals(dimension) || "other".equals(dimension)) {
+            return 100;
+        }
+        if ("project".equals(dimension) && bucket.issues().size() >= 2) {
+            long projects = bucket.issues().stream().map(JiraIssueFact::projectKey).distinct().count();
+            if (projects > 1) {
+                return 80;
+            }
+        }
+        return 0;
+    }
+
+    static int issueScore(JiraIssueFact issue) {
+        int score = 0;
+        if (issue.looksLikeSpec()) {
+            score += 50;
+        }
+        if (issue.hasAcceptance()) {
+            score += 30;
+        }
+        String type = issue.issueType().toLowerCase(Locale.ROOT);
+        if (type.contains("epic")) {
+            score += 25;
+        } else if (type.contains("story") || type.contains("feature")) {
+            score += 20;
+        }
+        score += Math.min(40, (issue.acceptance().length() + issue.description().length()) / 20);
+        return score;
+    }
+
     private List<Clue> cluesFor(JiraCategoryBucket bucket, AtomicInteger seq) {
         List<JiraIssueFact> issues = bucket.issues();
         List<Clue> clues = new ArrayList<>();

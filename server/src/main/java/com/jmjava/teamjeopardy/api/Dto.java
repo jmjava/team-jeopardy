@@ -124,7 +124,8 @@ public final class Dto {
             @NotBlank String response,
             String explanation,
             String sourcePath,
-            Boolean dailyDouble
+            Boolean dailyDouble,
+            Boolean finalJeopardy
     ) {
     }
 

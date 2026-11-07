@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS saved_clues (
     explanation TEXT,
     source_path TEXT,
     daily_double INTEGER NOT NULL DEFAULT 0,
+    final_jeopardy INTEGER NOT NULL DEFAULT 0,
     FOREIGN KEY (board_id) REFERENCES saved_boards(id) ON DELETE CASCADE
 );
 

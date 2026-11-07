@@ -29,6 +29,21 @@ public class QuestionBankRepository {
     public QuestionBankRepository(JdbcTemplate jdbc, ObjectMapper mapper) {
         this.jdbc = jdbc;
         this.mapper = mapper;
+        migrateFinalColumn();
+    }
+
+    private void migrateFinalColumn() {
+        try {
+            Integer count = jdbc.queryForObject(
+                    "SELECT COUNT(*) FROM pragma_table_info('saved_clues') WHERE name='final_jeopardy'",
+                    Integer.class
+            );
+            if (count != null && count == 0) {
+                jdbc.execute("ALTER TABLE saved_clues ADD COLUMN final_jeopardy INTEGER NOT NULL DEFAULT 0");
+            }
+        } catch (Exception ignored) {
+            // saved_clues may not exist yet while schema.sql is applying
+        }
     }
 
     public SavedBoardRecord insert(SavedBoardRecord record) {
@@ -69,29 +84,43 @@ public class QuestionBankRepository {
                     continue;
                 }
                 for (Clue clue : category.clues()) {
-                    jdbc.update(
-                            """
-                            INSERT INTO saved_clues (
-                                id, board_id, category_id, category_title, clue_id,
-                                value, prompt, response, explanation, source_path, daily_double
-                            ) VALUES (?,?,?,?,?,?,?,?,?,?,?)
-                            """,
-                            UUID.randomUUID().toString(),
-                            record.id(),
-                            category.id(),
-                            category.title(),
-                            clue.id(),
-                            clue.value(),
-                            clue.prompt(),
-                            clue.response(),
-                            clue.explanation(),
-                            clue.sourcePath(),
-                            clue.dailyDouble() ? 1 : 0
-                    );
+                    insertClueRow(record.id(), category.id(), category.title(), clue);
                 }
+            }
+            if (record.board().finalJeopardy() != null) {
+                Clue fj = record.board().finalJeopardy();
+                insertClueRow(
+                        record.id(),
+                        "cat-final-jeopardy",
+                        record.board().finalCategoryLabel(),
+                        fj.asFinal()
+                );
             }
         }
         return record;
+    }
+
+    private void insertClueRow(String boardId, String categoryId, String categoryTitle, Clue clue) {
+        jdbc.update(
+                """
+                INSERT INTO saved_clues (
+                    id, board_id, category_id, category_title, clue_id,
+                    value, prompt, response, explanation, source_path, daily_double, final_jeopardy
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+                """,
+                UUID.randomUUID().toString(),
+                boardId,
+                categoryId,
+                categoryTitle,
+                clue.id(),
+                clue.value(),
+                clue.prompt(),
+                clue.response(),
+                clue.explanation(),
+                clue.sourcePath(),
+                clue.dailyDouble() ? 1 : 0,
+                clue.finalJeopardy() ? 1 : 0
+        );
     }
 
     public List<SavedBoardSummary> list(int limit) {
@@ -234,8 +263,8 @@ public class QuestionBankRepository {
                 """
                 INSERT INTO saved_clues (
                     id, board_id, category_id, category_title, clue_id,
-                    value, prompt, response, explanation, source_path, daily_double
-                ) VALUES (?,?,?,?,?,?,?,?,?,?,?)
+                    value, prompt, response, explanation, source_path, daily_double, final_jeopardy
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
                 """,
                 clue.id(),
                 clue.boardId(),
@@ -247,7 +276,8 @@ public class QuestionBankRepository {
                 clue.response(),
                 clue.explanation(),
                 clue.sourcePath(),
-                clue.dailyDouble() ? 1 : 0
+                clue.dailyDouble() ? 1 : 0,
+                clue.finalJeopardy() ? 1 : 0
         );
         return clue;
     }
@@ -358,7 +388,8 @@ public class QuestionBankRepository {
                 rs.getString("response"),
                 rs.getString("explanation"),
                 rs.getString("source_path"),
-                rs.getInt("daily_double") != 0
+                rs.getInt("daily_double") != 0,
+                columnInt(rs, "final_jeopardy") != 0
         );
     }
 
@@ -422,6 +453,14 @@ public class QuestionBankRepository {
             return mapper.readValue(json, type);
         } catch (JsonProcessingException e) {
             throw new IllegalStateException("Failed to deserialize from SQLite", e);
+        }
+    }
+
+    private static int columnInt(ResultSet rs, String column) {
+        try {
+            return rs.getInt(column);
+        } catch (SQLException e) {
+            return 0;
         }
     }
 

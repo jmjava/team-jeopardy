@@ -14,6 +14,7 @@ import com.jmjava.teamjeopardy.jira.JiraReleaseCategorizer;
 import com.jmjava.teamjeopardy.jira.JiraReleaseClient;
 import com.jmjava.teamjeopardy.quiz.Board;
 import com.jmjava.teamjeopardy.quiz.Category;
+import com.jmjava.teamjeopardy.quiz.Clue;
 import com.jmjava.teamjeopardy.quiz.QuestionGenerator;
 import com.jmjava.teamjeopardy.quiz.QuestionHints;
 import com.jmjava.teamjeopardy.quiz.strategy.JiraReleaseQuestionStrategy;
@@ -343,7 +344,9 @@ public class BoardFactory {
         }
 
         List<JiraCategoryBucket> buckets = jiraReleaseCategorizer.categorize(issues);
-        List<Category> categories = jiraReleaseQuestionStrategy.build(buckets, new AtomicInteger(1));
+        AtomicInteger clueSeq = new AtomicInteger(1);
+        List<Category> categories = jiraReleaseQuestionStrategy.build(buckets, clueSeq);
+        JiraReleaseQuestionStrategy.FinalSelection finalPick = jiraReleaseQuestionStrategy.pickFinal(buckets, clueSeq);
 
         CodeGraph graph = new CodeGraph("jira:" + version);
         graph.setProjectKind(ProjectKind.GENERIC);
@@ -352,6 +355,19 @@ public class BoardFactory {
             graph.setQuestionHints(effective.combined());
         }
         categories = questionGenerator.polish(graph, categories, effective);
+        Clue finalClue = null;
+        String finalCategory = null;
+        if (finalPick != null) {
+            List<Category> polishedFinal = questionGenerator.polish(
+                    graph,
+                    List.of(new Category("cat-final-jeopardy", finalPick.categoryTitle(), List.of(finalPick.clue()))),
+                    effective
+            );
+            if (!polishedFinal.isEmpty() && !polishedFinal.getFirst().clues().isEmpty()) {
+                finalClue = polishedFinal.getFirst().clues().getFirst().asFinal();
+                finalCategory = finalPick.categoryTitle();
+            }
+        }
 
         String title = boardTitle != null && !boardTitle.isBlank()
                 ? boardTitle
@@ -360,7 +376,9 @@ public class BoardFactory {
                 title,
                 useFixture ? jiraReleaseClient.sampleHost() : "jira:" + version,
                 categories,
-                new Board.GraphDigest(issues.size(), 0, 0, 0, 0)
+                new Board.GraphDigest(issues.size(), 0, 0, 0, 0),
+                finalClue,
+                finalCategory
         );
 
         Map<String, Object> summary = new LinkedHashMap<>();
@@ -377,6 +395,11 @@ public class BoardFactory {
         summary.put("categoryTitles", board.categories().stream().map(Category::title).toList());
         summary.put("bucketDimensions", buckets.stream().map(JiraCategoryBucket::dimension).toList());
         summary.put("questionHints", graph.getQuestionHints());
+        if (finalClue != null) {
+            summary.put("finalJeopardy", true);
+            summary.put("finalCategoryTitle", finalCategory);
+            summary.put("finalSourceKey", finalPick == null ? null : finalPick.issueKey());
+        }
         return new BuiltBoard(board, summary);
     }
 

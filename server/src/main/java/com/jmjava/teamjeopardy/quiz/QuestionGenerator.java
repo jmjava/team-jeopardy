@@ -118,11 +118,26 @@ public class QuestionGenerator {
                         : Path.of(graph.getRootPath()).getFileName()
         );
 
+        Clue finalClue = null;
+        String finalCategory = null;
+        for (Category category : categories) {
+            if (category.clues() == null || category.clues().isEmpty()) {
+                continue;
+            }
+            Clue candidate = category.clues().get(category.clues().size() - 1);
+            if (finalClue == null || candidate.value() >= finalClue.value()) {
+                finalClue = candidate.withId("final-" + candidate.id()).asFinal();
+                finalCategory = category.title();
+            }
+        }
+
         return new Board(
                 title,
                 graph.getRootPath(),
                 categories,
-                new Board.GraphDigest(stats.nodeCount(), stats.edgeCount(), (int) files, (int) types, (int) functions)
+                new Board.GraphDigest(stats.nodeCount(), stats.edgeCount(), (int) files, (int) types, (int) functions),
+                finalClue,
+                finalCategory
         );
     }
 
@@ -234,7 +249,8 @@ public class QuestionGenerator {
                     JeopardyStyle.whatIs(c.response()),
                     c.explanation(),
                     c.sourcePath(),
-                    i == 3 && source.size() >= 4
+                    !c.finalJeopardy() && i == 3 && source.size() >= 4,
+                    c.finalJeopardy()
             ));
         }
         return new Category(category.id(), category.title(), clues);

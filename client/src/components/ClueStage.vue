@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, onBeforeUnmount } from 'vue'
+import { computed, onMounted, onBeforeUnmount, ref } from 'vue'
 
 const props = defineProps({
   clue: Object,
@@ -7,18 +7,33 @@ const props = defineProps({
   isHost: Boolean,
   canBuzz: Boolean,
   lockedOut: Boolean,
+  playerId: String,
+  teamId: String,
+  teams: {
+    type: Array,
+    default: () => []
+  },
   mode: {
     type: String,
     default: 'player' // player | display | host
   }
 })
 
-const emit = defineEmits(['buzz', 'judge', 'reveal', 'back', 'open'])
+const emit = defineEmits(['buzz', 'judge', 'reveal', 'back', 'open', 'wager'])
 
+const wagerDraft = ref(5)
 const isPreview = computed(() => props.phase === 'HOST_PREVIEW')
+const isDdWager = computed(() => props.phase === 'DD_WAGER')
 const isOpen = computed(() => props.phase === 'CLUE_OPEN')
 const isLocked = computed(() => props.phase === 'BUZZ_LOCKED')
 const isRevealed = computed(() => props.phase === 'ANSWER_REVEALED')
+const isWagerer = computed(() => props.playerId && props.clue?.buzzedPlayerId === props.playerId)
+const myTeam = computed(() => (props.teams || []).find((t) => t.id === props.teamId))
+const maxWager = computed(() => {
+  const score = myTeam.value?.score ?? 0
+  return score < 5 ? 1000 : score
+})
+const hidePromptForDd = computed(() => isDdWager.value && !props.isHost)
 
 function onKey(e) {
   if (e.repeat) return
@@ -46,6 +61,12 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
       <p class="kicker">Get ready</p>
       <h2>Host is reading the clue</h2>
       <p class="muted">Buzzers open when the clue appears.</p>
+    </div>
+
+    <div v-else-if="hidePromptForDd" class="teaser" data-testid="dd-wager-teaser">
+      <p class="kicker">Daily Double</p>
+      <h2>{{ isWagerer ? 'Type your wager' : (clue.buzzedPlayerName ? clue.buzzedPlayerName + ' is wagering' : 'Wager before the clue') }}</h2>
+      <p class="muted">Min $5. Max is your score, or $1000 when your score is under $5.</p>
     </div>
 
     <article v-else-if="!isPreview || isHost" class="prompt">
@@ -82,6 +103,16 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
         Buzz
         <span class="hint" aria-hidden="true">Space</span>
       </button>
+
+      <div v-if="canBuzz && isDdWager && isWagerer" class="wager-form">
+        <label>
+          Wager (${{ 5 }}–${{ maxWager }})
+          <input v-model.number="wagerDraft" type="number" min="5" :max="maxWager" data-testid="dd-wager-input" />
+        </label>
+        <button class="ok" data-testid="dd-lock-wager" @click="emit('wager', Number(wagerDraft))">
+          Lock wager
+        </button>
+      </div>
 
       <p v-if="canBuzz && isLocked" class="locked-msg muted">Buzzers locked</p>
       <p v-if="lockedOut && isOpen" class="locked-msg muted">You already answered this clue</p>
@@ -285,6 +316,18 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 
 .locked-msg {
   margin: 0;
+}
+
+.wager-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  align-items: end;
+}
+
+.wager-form label {
+  display: grid;
+  gap: 0.3rem;
 }
 
 @keyframes pulse {

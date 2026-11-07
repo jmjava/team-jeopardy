@@ -20,7 +20,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Service-level simulation of a full two-team match: admit gate, host preview
- * redaction, incorrect reopen, Daily Double badge, host reveal, late admit,
+ * redaction, incorrect reopen, Daily Double wager, host reveal, late admit,
  * and FINISHED after the last clue.
  */
 class FullGamePlayTest {
@@ -81,19 +81,27 @@ class FullGamePlayTest {
         service.admitPlayer(roomId, hostId, rileyId);
         assertTrue(player(rileyId).admitted());
 
-        // 3. Patterns $600 Daily Double — badge is public; Riley converts.
+        // 3. Patterns $600 Daily Double — clue stays hidden until Riley wagers the $200 they have.
         GameSnapshot preview = service.selectClue(roomId, hostId, "p600");
         assertTrue(preview.activeClue().dailyDouble());
         assertTrue(service.publicSnapshot(roomId).activeClue().dailyDouble());
         assertEquals("prompt text p600", preview.activeClue().prompt());
         assertNull(service.publicSnapshot(roomId).activeClue().prompt());
         service.openBuzzers(roomId, hostId);
+        assertEquals(GamePhase.CLUE_OPEN, phase());
+        assertNull(service.publicSnapshot(roomId).activeClue().prompt());
+        GameSnapshot claimed = service.buzz(roomId, rileyId);
+        assertEquals(GamePhase.DD_WAGER, claimed.phase());
+        GameSnapshot wagered = service.setWager(roomId, rileyId, 200);
+        assertEquals(GamePhase.BUZZ_LOCKED, wagered.phase());
+        assertEquals(200, wagered.activeClue().wager());
         assertEquals("prompt text p600", service.publicSnapshot(roomId).activeClue().prompt());
         assertNull(service.publicSnapshot(roomId).activeClue().response());
-        buzzAndJudge(rileyId, true);
+        GameSnapshot converted = service.judge(roomId, hostId, true);
+        assertEquals(GamePhase.ANSWER_REVEALED, converted.phase());
         assertTrue(service.publicSnapshot(roomId).activeClue().responseVisible());
         returnBoard();
-        assertScores(800, 200);
+        assertScores(400, 200);
 
         // 4. Contracts $200 — nobody knows it; host reveals.
         openClue("q200");
@@ -101,7 +109,7 @@ class FullGamePlayTest {
         assertEquals(GamePhase.ANSWER_REVEALED, revealed.phase());
         assertTrue(revealed.activeClue().responseVisible());
         returnBoard();
-        assertScores(800, 200);
+        assertScores(400, 200);
 
         // 5. Patterns $800 — Sam misses and the host closes the clue.
         openClue("p800");
@@ -109,28 +117,28 @@ class FullGamePlayTest {
         service.revealAnswer(roomId, hostId);
         assertThrows(ResponseStatusException.class, () -> service.judge(roomId, hostId, true));
         returnBoard();
-        assertScores(800, -600);
+        assertScores(400, -600);
 
         // 6–10. Remaining board: mix of conversions down the columns.
         playCorrect("p400", alexId);
-        assertScores(1200, -600);
+        assertScores(800, -600);
         playCorrect("p1000", rileyId);
-        assertScores(2200, -600);
+        assertScores(1800, -600);
         playCorrect("q600", samId);
-        assertScores(2200, 0);
+        assertScores(1800, 0);
 
         openClue("q800");
         buzzAndJudge(alexId, false);
         buzzAndJudge(samId, true);
         returnBoard();
-        assertScores(1400, 800);
+        assertScores(1000, 800);
 
         openClue("q1000");
         buzzAndJudge(rileyId, true);
         GameSnapshot finished = service.returnToBoard(roomId, hostId);
         assertEquals(GamePhase.FINISHED, finished.phase());
         assertTrue(finished.cells().stream().allMatch(BoardCellState::answered));
-        assertScores(2400, 800);
+        assertScores(2000, 800);
 
         assertThrows(ResponseStatusException.class, () -> service.selectClue(roomId, hostId, "p200"));
         assertThrows(ResponseStatusException.class, () ->

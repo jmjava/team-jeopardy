@@ -128,15 +128,28 @@ the three env vars are set; the health payload does not echo the host or token.
 
 `sourceKind` for the question bank is `jira`.
 
-## Leftover: typed Final + Daily Double wager (T16)
+## Wagers (Daily Double and Final Jeopardy)
 
-Daily Double on `main` is a **badge** (`clue.dailyDouble`) on a normal buzz
-clue. A `FINAL` game phase exists in the enum but is unused. Players do not
-type a wager, and there is no write-in Final Jeopardy yet.
+A wager is at least **$5**. The maximum is the team's score when that score is
+at least $5. A score below $5 (zero, negative, or a small positive) may wager
+up to **$1000**, so a legal amount always exists.
 
-That leftover is T16: typed Daily Double wager before the clue is shown, and
-typed Final (category → locked wagers → clue → typed answers → host marks).
-OpenAI is not required. This section is not shipped gameplay.
+**Daily Double.** The buzzing player, or the player the host selects, types a
+wager before the clue is shown. Correct or incorrect applies that wager, not
+the cell's face value. A miss does not reopen the clue. Ordinary clues still
+use the buzzer, including lockout after a miss. Final Jeopardy is write-in
+only.
+
+**Final Jeopardy.** When the board is clear, or when the host starts Final,
+the room shows the category. Each team types a locked wager, then the clue,
+then a typed answer. The writing timer defaults to 30 seconds. The host marks
+each line correct or incorrect and the wager is applied. The shared display
+(`?view=display`) shows that answers are locked and does not show other teams'
+text until the host reveals the official response.
+
+Generated boards keep one extra clue with `finalJeopardy: true`. OpenAI may
+polish that prompt and is not required. Nothing is auto-graded against JIRA,
+and OpenAI or JIRA keys are not stored.
 
 ## Question bank (SQLite)
 
@@ -214,7 +227,7 @@ curl -s -X POST http://localhost:8080/api/rooms/ingest \
 
 `mvn test` now includes **running real-play simulations** (no separate server):
 
-- `FullGamePlayTest` — two teams play a 10-clue board to `FINISHED` (admit gate, host-preview redaction, miss/reopen, Daily Double badge, host reveal, late admit, exact scores)
+- `FullGamePlayTest` — two teams play a 10-clue board to `FINISHED` (admit gate, host-preview redaction, miss/reopen, Daily Double wager, host reveal, late admit, exact scores)
 - `RealPlaySimulationTest` — HTTP play-through of a Maven sample board, a JIRA fixture board, and a question-bank `load-board`
 - `MultiplayerStompTest` — four-client STOMP table, including a compact bank-loaded board played to `FINISHED`
 - `RemoteClientSyncTest` — concurrent HTTP/STOMP buzz (one winner, shared revision) and a dropped client catching up via GET

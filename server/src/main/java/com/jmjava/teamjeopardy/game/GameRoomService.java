@@ -11,6 +11,7 @@ import org.springframework.web.server.ResponseStatusException;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -39,6 +40,9 @@ public class GameRoomService {
     @Value("${team-jeopardy.max-players-per-team:8}")
     private int maxPlayersPerTeam;
 
+    @Value("${team-jeopardy.final.writing-seconds:30}")
+    private int finalWritingSeconds;
+
     public record CreateRoomResult(
             GameSnapshot snapshot,
             String hostPlayerId,
@@ -52,9 +56,16 @@ public class GameRoomService {
             "SELECT_CLUE",
             "OPEN_BUZZERS",
             "SHOW_CLUE",
+            "SELECT_WAGERER",
             "JUDGE",
             "REVEAL",
             "RETURN_BOARD",
+            "START_FINAL",
+            "START_FINAL_WAGER",
+            "START_FINAL_WRITING",
+            "LOCK_FINAL_ANSWERS",
+            "END_WRITING",
+            "JUDGE_FINAL",
             "ADMIT_PLAYER",
             "ADMIT_ALL"
     );
@@ -194,7 +205,8 @@ public class GameRoomService {
                     clue.sourcePath(),
                     clue.dailyDouble(),
                     false,
-                    null, null, null, null, null
+                    null, null, null, null, null,
+                    null
             ));
             // Host reads first; players see only a teaser until OPEN_BUZZERS.
             room.setPhase(GamePhase.HOST_PREVIEW);
@@ -213,6 +225,31 @@ public class GameRoomService {
                 throw conflict("No active clue");
             }
             room.setPhase(GamePhase.CLUE_OPEN);
+            room.bumpRevision();
+            return room.hostSnapshot();
+        });
+    }
+
+    public GameSnapshot selectWagerer(String roomId, String hostPlayerId, String targetPlayerId) {
+        return withRoomId(roomId, room -> {
+            requireHost(room, hostPlayerId);
+            ActiveClue active = room.getActiveClue();
+            if (active == null || !active.dailyDouble()) {
+                throw conflict("A Daily Double must be open to select a wagerer");
+            }
+            if (room.getPhase() != GamePhase.HOST_PREVIEW && room.getPhase() != GamePhase.CLUE_OPEN) {
+                throw conflict("Select the Daily Double player before the wager is locked");
+            }
+            Player player = requireAdmittedTeamedPlayer(room, targetPlayerId);
+            Team team = room.getTeams().get(player.teamId());
+            room.setActiveClue(active.withBuzz(
+                    player.id(),
+                    player.displayName(),
+                    player.teamId(),
+                    team == null ? null : team.name(),
+                    team == null ? null : team.color()
+            ));
+            room.setPhase(GamePhase.DD_WAGER);
             room.bumpRevision();
             return room.hostSnapshot();
         });
@@ -242,26 +279,68 @@ public class GameRoomService {
                 throw conflict("Another player already buzzed in");
             }
             Team team = room.getTeams().get(player.teamId());
-            room.setActiveClue(new ActiveClue(
-                    active.clueId(),
-                    active.categoryId(),
-                    active.categoryTitle(),
-                    active.value(),
-                    active.prompt(),
-                    active.response(),
-                    active.explanation(),
-                    active.sourcePath(),
-                    active.dailyDouble(),
-                    false,
+            room.setActiveClue(active.withBuzz(
                     player.id(),
                     player.displayName(),
                     player.teamId(),
                     team == null ? null : team.name(),
                     team == null ? null : team.color()
             ));
-            room.setPhase(GamePhase.BUZZ_LOCKED);
+            room.setPhase(active.dailyDouble() ? GamePhase.DD_WAGER : GamePhase.BUZZ_LOCKED);
             room.bumpRevision();
             return snapshotFor(room, playerId);
+        });
+    }
+
+    public GameSnapshot setWager(String roomId, String playerId, int amount) {
+        return withRoomId(roomId, room -> {
+            Player player = requireAdmittedTeamedPlayer(room, playerId);
+            Team team = room.getTeams().get(player.teamId());
+            if (team == null) {
+                throw notFound("Team missing");
+            }
+            int wager;
+            try {
+                wager = WagerRules.requireValid(amount, team.score());
+            } catch (IllegalArgumentException ex) {
+                throw conflict(ex.getMessage());
+            }
+
+            if (room.getPhase() == GamePhase.DD_WAGER) {
+                ActiveClue active = room.getActiveClue();
+                if (active == null || !player.id().equals(active.buzzedPlayerId())) {
+                    throw conflict("Only the selected Daily Double player can wager");
+                }
+                room.setActiveClue(active.withWager(wager));
+                room.setPhase(GamePhase.BUZZ_LOCKED);
+                room.bumpRevision();
+                return snapshotFor(room, playerId);
+            }
+
+            if (room.getPhase() == GamePhase.FINAL_WAGER) {
+                FinalRound round = requireFinal(room);
+                List<FinalEntry> next = new ArrayList<>();
+                boolean found = false;
+                for (FinalEntry entry : round.entries()) {
+                    if (player.teamId().equals(entry.teamId())) {
+                        if (entry.wagerLocked()) {
+                            throw conflict("This team's Final wager is already locked");
+                        }
+                        next.add(entry.withWager(wager, player.id(), player.displayName()));
+                        found = true;
+                    } else {
+                        next.add(entry);
+                    }
+                }
+                if (!found) {
+                    throw conflict("Your team is not in Final Jeopardy");
+                }
+                room.setFinalRound(round.withEntries(next));
+                room.bumpRevision();
+                return snapshotFor(room, playerId);
+            }
+
+            throw conflict("Wagers are not open");
         });
     }
 
@@ -279,29 +358,22 @@ public class GameRoomService {
             if (team == null) {
                 throw notFound("Buzzed team missing");
             }
-            int delta = active.value();
+            int delta = active.scoreDelta();
             int nextScore = correct ? team.score() + delta : team.score() - delta;
             room.getTeams().put(team.id(), team.withScore(nextScore));
 
             if (correct) {
+                room.setLastCorrectPlayerId(active.buzzedPlayerId());
                 markAnswered(room, active.clueId());
-                room.setActiveClue(withResponseVisible(active, true));
+                room.setActiveClue(active.withResponseVisible(true));
+                room.setPhase(GamePhase.ANSWER_REVEALED);
+            } else if (active.dailyDouble()) {
+                markAnswered(room, active.clueId());
+                room.setActiveClue(active.withResponseVisible(true));
                 room.setPhase(GamePhase.ANSWER_REVEALED);
             } else {
                 room.lockOut(active.buzzedPlayerId());
-                room.setActiveClue(new ActiveClue(
-                        active.clueId(),
-                        active.categoryId(),
-                        active.categoryTitle(),
-                        active.value(),
-                        active.prompt(),
-                        active.response(),
-                        active.explanation(),
-                        active.sourcePath(),
-                        active.dailyDouble(),
-                        false,
-                        null, null, null, null, null
-                ));
+                room.setActiveClue(active.clearBuzz());
                 room.setPhase(GamePhase.CLUE_OPEN);
             }
             room.bumpRevision();
@@ -312,6 +384,9 @@ public class GameRoomService {
     public GameSnapshot revealAnswer(String roomId, String hostPlayerId) {
         return withRoomId(roomId, room -> {
             requireHost(room, hostPlayerId);
+            if (room.getPhase().isFinalRound()) {
+                return revealFinal(room);
+            }
             ActiveClue active = room.getActiveClue();
             if (active == null) {
                 throw conflict("No active clue");
@@ -320,7 +395,7 @@ public class GameRoomService {
                 return room.hostSnapshot();
             }
             markAnswered(room, active.clueId());
-            room.setActiveClue(withResponseVisible(active, true));
+            room.setActiveClue(active.withResponseVisible(true));
             room.setPhase(GamePhase.ANSWER_REVEALED);
             room.bumpRevision();
             return room.hostSnapshot();
@@ -332,10 +407,153 @@ public class GameRoomService {
             requireHost(room, hostPlayerId);
             room.setActiveClue(null);
             room.clearLockouts();
-            if (room.allCluesAnswered()) {
+            if (room.getPhase() == GamePhase.FINAL_REVEALED || room.getPhase() == GamePhase.FINISHED) {
+                room.setPhase(GamePhase.FINISHED);
+            } else if (room.allCluesAnswered() && room.hasFinalJeopardy() && room.getFinalRound() == null) {
+                beginFinal(room);
+            } else if (room.allCluesAnswered()) {
                 room.setPhase(GamePhase.FINISHED);
             } else {
                 room.setPhase(GamePhase.BOARD);
+            }
+            room.bumpRevision();
+            return room.hostSnapshot();
+        });
+    }
+
+    public GameSnapshot startFinal(String roomId, String hostPlayerId) {
+        return withRoomId(roomId, room -> {
+            requireHost(room, hostPlayerId);
+            if (room.getPhase() != GamePhase.BOARD && room.getPhase() != GamePhase.FINISHED) {
+                throw conflict("Final Jeopardy can start from the board");
+            }
+            if (room.getPhase() == GamePhase.FINISHED && room.getFinalRound() != null) {
+                throw conflict("Final Jeopardy already finished");
+            }
+            beginFinal(room);
+            room.bumpRevision();
+            return room.hostSnapshot();
+        });
+    }
+
+    public GameSnapshot startFinalWager(String roomId, String hostPlayerId) {
+        return withRoomId(roomId, room -> {
+            requireHost(room, hostPlayerId);
+            if (room.getPhase() != GamePhase.FINAL_CATEGORY) {
+                throw conflict("Open Final wagers after the category is shown");
+            }
+            room.setPhase(GamePhase.FINAL_WAGER);
+            room.bumpRevision();
+            return room.hostSnapshot();
+        });
+    }
+
+    public GameSnapshot startFinalWriting(String roomId, String hostPlayerId, Integer seconds) {
+        return withRoomId(roomId, room -> {
+            requireHost(room, hostPlayerId);
+            if (room.getPhase() != GamePhase.FINAL_WAGER) {
+                throw conflict("Writing starts after wagers");
+            }
+            FinalRound round = requireFinal(room);
+            int secs = seconds == null || seconds < 5 ? finalWritingSeconds : Math.min(seconds, 180);
+            List<FinalEntry> next = new ArrayList<>();
+            for (FinalEntry entry : round.entries()) {
+                if (entry.wagerLocked()) {
+                    next.add(entry);
+                } else {
+                    next.add(entry.withWager(WagerRules.MIN_WAGER, entry.playerId(), entry.playerName()));
+                }
+            }
+            room.setFinalRound(round.withEntries(next).withWriting(Instant.now().plusSeconds(secs), secs));
+            room.setPhase(GamePhase.FINAL_WRITING);
+            room.bumpRevision();
+            return room.hostSnapshot();
+        });
+    }
+
+    public GameSnapshot setFinalAnswer(String roomId, String playerId, String text) {
+        return withRoomId(roomId, room -> {
+            if (room.getPhase() != GamePhase.FINAL_WRITING) {
+                throw conflict("Final answers are not being written");
+            }
+            Player player = requireAdmittedTeamedPlayer(room, playerId);
+            FinalRound round = requireFinal(room);
+            if (round.writingEndsAt() != null && Instant.now().isAfter(round.writingEndsAt())) {
+                lockFinalAnswers(room);
+                throw conflict("Writing time has ended");
+            }
+            String answer = text == null ? "" : text.trim();
+            List<FinalEntry> next = new ArrayList<>();
+            boolean found = false;
+            for (FinalEntry entry : round.entries()) {
+                if (player.teamId().equals(entry.teamId())) {
+                    if (entry.answerLocked()) {
+                        throw conflict("This team's Final answer is already locked");
+                    }
+                    next.add(entry.withAnswer(answer, player.id(), player.displayName()));
+                    found = true;
+                } else {
+                    next.add(entry);
+                }
+            }
+            if (!found) {
+                throw conflict("Your team is not in Final Jeopardy");
+            }
+            room.setFinalRound(round.withEntries(next));
+            room.bumpRevision();
+            return snapshotFor(room, playerId);
+        });
+    }
+
+    public GameSnapshot lockFinalAnswers(String roomId, String hostPlayerId) {
+        return withRoomId(roomId, room -> {
+            requireHost(room, hostPlayerId);
+            if (room.getPhase() != GamePhase.FINAL_WRITING && room.getPhase() != GamePhase.FINAL_LOCKED) {
+                throw conflict("Nothing to lock");
+            }
+            lockFinalAnswers(room);
+            room.bumpRevision();
+            return room.hostSnapshot();
+        });
+    }
+
+    public GameSnapshot judgeFinal(String roomId, String hostPlayerId, String teamId, boolean correct) {
+        return withRoomId(roomId, room -> {
+            requireHost(room, hostPlayerId);
+            if (room.getPhase() != GamePhase.FINAL_REVEALED && room.getPhase() != GamePhase.FINAL_LOCKED) {
+                throw conflict("Reveal the official response before judging Final");
+            }
+            if (room.getPhase() == GamePhase.FINAL_LOCKED) {
+                room.setPhase(GamePhase.FINAL_REVEALED);
+            }
+            FinalRound round = requireFinal(room);
+            Team team = room.getTeams().get(teamId);
+            if (team == null) {
+                throw notFound("Unknown team");
+            }
+            List<FinalEntry> next = new ArrayList<>();
+            boolean found = false;
+            for (FinalEntry entry : round.entries()) {
+                if (teamId.equals(entry.teamId())) {
+                    if (entry.correct() != null) {
+                        throw conflict("This team has already been judged");
+                    }
+                    int wager = entry.wager() == null ? 0 : entry.wager();
+                    int nextScore = correct ? team.score() + wager : team.score() - wager;
+                    room.getTeams().put(team.id(), team.withScore(nextScore));
+                    next.add(entry.withJudgement(correct));
+                    found = true;
+                } else {
+                    next.add(entry);
+                }
+            }
+            if (!found) {
+                throw conflict("Team is not in Final Jeopardy");
+            }
+            room.setFinalRound(round.withEntries(next));
+            boolean allJudged = next.stream().allMatch(e -> e.correct() != null);
+            if (allJudged) {
+                room.setPhase(GamePhase.FINISHED);
             }
             room.bumpRevision();
             return room.hostSnapshot();
@@ -391,10 +609,23 @@ public class GameRoomService {
             case "START" -> startGame(roomId, playerId);
             case "SELECT_CLUE" -> selectClue(roomId, playerId, stringPayload(payload, "clueId"));
             case "OPEN_BUZZERS", "SHOW_CLUE" -> openBuzzers(roomId, playerId);
+            case "SELECT_WAGERER" -> selectWagerer(roomId, playerId, stringPayload(payload, "playerId"));
             case "BUZZ" -> buzz(roomId, playerId);
+            case "SET_WAGER" -> setWager(roomId, playerId, intPayload(payload, "amount"));
             case "JUDGE" -> judge(roomId, playerId, boolPayload(payload, "correct", false));
             case "REVEAL" -> revealAnswer(roomId, playerId);
             case "RETURN_BOARD" -> returnToBoard(roomId, playerId);
+            case "START_FINAL" -> startFinal(roomId, playerId);
+            case "START_FINAL_WAGER" -> startFinalWager(roomId, playerId);
+            case "START_FINAL_WRITING" -> startFinalWriting(roomId, playerId, optionalIntPayload(payload, "seconds"));
+            case "SET_FINAL_ANSWER" -> setFinalAnswer(roomId, playerId, optionalStringPayload(payload, "text"));
+            case "LOCK_FINAL_ANSWERS", "END_WRITING" -> lockFinalAnswers(roomId, playerId);
+            case "JUDGE_FINAL" -> judgeFinal(
+                    roomId,
+                    playerId,
+                    stringPayload(payload, "teamId"),
+                    boolPayload(payload, "correct", false)
+            );
             case "ADMIT_PLAYER" -> admitPlayer(roomId, playerId, stringPayload(payload, "playerId"));
             case "ADMIT_ALL" -> admitAll(roomId, playerId);
             case "CREATE_TEAM" -> createTeam(roomId, playerId, stringPayload(payload, "teamName"));
@@ -421,11 +652,19 @@ public class GameRoomService {
         }
     }
 
-    /** Host view only when the create-room token is presented; otherwise the public snapshot. */
+    /**
+     * Host view only when the create-room token is presented.
+     * A seated player sees their own Final line; everyone else gets the public snapshot.
+     */
     public GameSnapshot viewFor(String roomId, String playerId, String hostToken) {
         return withRoomId(roomId, room -> {
             if (playerId != null && playerId.equals(room.getHostPlayerId()) && tokenMatches(room.getHostToken(), hostToken)) {
                 return room.hostSnapshot();
+            }
+            if (playerId != null
+                    && !playerId.equals(room.getHostPlayerId())
+                    && room.getPlayers().containsKey(playerId)) {
+                return room.playerSnapshot(playerId);
             }
             return room.publicSnapshot();
         });
@@ -450,11 +689,76 @@ public class GameRoomService {
         return withRoomId(roomId, room -> new SnapshotPair(room.publicSnapshot(), room.hostSnapshot()));
     }
 
+    private void beginFinal(GameRoom room) {
+        if (!room.hasFinalJeopardy()) {
+            throw conflict("This board has no Final Jeopardy clue");
+        }
+        if (room.getFinalRound() != null && room.getPhase().isFinalRound()) {
+            throw conflict("Final Jeopardy is already in progress");
+        }
+        Clue clue = room.getBoard().finalJeopardy();
+        List<FinalEntry> entries = new ArrayList<>();
+        for (Team team : room.getTeams().values()) {
+            boolean playing = room.getPlayers().values().stream()
+                    .anyMatch(p -> !p.host() && p.admitted() && team.id().equals(p.teamId()));
+            if (!playing) {
+                continue;
+            }
+            entries.add(new FinalEntry(
+                    team.id(), team.name(), team.color(),
+                    null, null, null, false, null, false, null
+            ));
+        }
+        if (entries.isEmpty()) {
+            throw conflict("Admit at least one teamed player before Final Jeopardy");
+        }
+        room.setActiveClue(null);
+        room.setFinalRound(new FinalRound(
+                room.getBoard().finalCategoryLabel(),
+                clue.prompt(),
+                clue.response(),
+                clue.explanation(),
+                clue.sourcePath(),
+                null,
+                null,
+                entries
+        ));
+        room.setPhase(GamePhase.FINAL_CATEGORY);
+    }
+
+    private GameSnapshot revealFinal(GameRoom room) {
+        if (room.getPhase() != GamePhase.FINAL_LOCKED && room.getPhase() != GamePhase.FINAL_REVEALED) {
+            if (room.getPhase() == GamePhase.FINAL_WRITING) {
+                lockFinalAnswers(room);
+            } else {
+                throw conflict("Lock Final answers before revealing");
+            }
+        }
+        room.setPhase(GamePhase.FINAL_REVEALED);
+        room.bumpRevision();
+        return room.hostSnapshot();
+    }
+
+    private void lockFinalAnswers(GameRoom room) {
+        FinalRound round = requireFinal(room);
+        List<FinalEntry> next = round.entries().stream().map(FinalEntry::lockAnswer).toList();
+        room.setFinalRound(round.withEntries(next));
+        room.setPhase(GamePhase.FINAL_LOCKED);
+    }
+
+    private static FinalRound requireFinal(GameRoom room) {
+        FinalRound round = room.getFinalRound();
+        if (round == null) {
+            throw conflict("Final Jeopardy has not started");
+        }
+        return round;
+    }
+
     private GameSnapshot snapshotFor(GameRoom room, String playerId) {
         if (playerId != null && playerId.equals(room.getHostPlayerId())) {
             return room.hostSnapshot();
         }
-        return room.publicSnapshot();
+        return room.playerSnapshot(playerId);
     }
 
     private void markAnswered(GameRoom room, String clueId) {
@@ -466,24 +770,16 @@ public class GameRoomService {
         }
     }
 
-    private ActiveClue withResponseVisible(ActiveClue active, boolean visible) {
-        return new ActiveClue(
-                active.clueId(),
-                active.categoryId(),
-                active.categoryTitle(),
-                active.value(),
-                active.prompt(),
-                active.response(),
-                active.explanation(),
-                active.sourcePath(),
-                active.dailyDouble(),
-                visible,
-                active.buzzedPlayerId(),
-                active.buzzedPlayerName(),
-                active.buzzedTeamId(),
-                active.buzzedTeamName(),
-                active.buzzedTeamColor()
-        );
+    private Player requireAdmittedTeamedPlayer(GameRoom room, String playerId) {
+        Player player = Optional.ofNullable(room.getPlayers().get(playerId))
+                .orElseThrow(() -> notFound("Unknown player"));
+        if (player.host() || !player.admitted()) {
+            throw conflict("Only admitted players can do this");
+        }
+        if (player.teamId() == null) {
+            throw conflict("Join a team first");
+        }
+        return player;
     }
 
     private Team ensureTeam(GameRoom room, String teamName) {
@@ -575,6 +871,11 @@ public class GameRoomService {
         return String.valueOf(value);
     }
 
+    private static String optionalStringPayload(Map<String, Object> payload, String key) {
+        Object value = payload.get(key);
+        return value == null ? "" : String.valueOf(value);
+    }
+
     private static boolean boolPayload(Map<String, Object> payload, String key, boolean defaultValue) {
         Object value = payload.get(key);
         if (value == null) {
@@ -584,6 +885,40 @@ public class GameRoomService {
             return b;
         }
         return Boolean.parseBoolean(String.valueOf(value));
+    }
+
+    private static int intPayload(Map<String, Object> payload, String key) {
+        Object value = payload.get(key);
+        if (value == null) {
+            throw conflict("Missing payload field: " + key);
+        }
+        if (value instanceof Number n) {
+            return n.intValue();
+        }
+        try {
+            return Integer.parseInt(String.valueOf(value).trim());
+        } catch (NumberFormatException ex) {
+            throw conflict("Invalid number for " + key);
+        }
+    }
+
+    private static Integer optionalIntPayload(Map<String, Object> payload, String key) {
+        Object value = payload.get(key);
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof Number n) {
+            return n.intValue();
+        }
+        String raw = String.valueOf(value).trim();
+        if (raw.isEmpty()) {
+            return null;
+        }
+        try {
+            return Integer.parseInt(raw);
+        } catch (NumberFormatException ex) {
+            throw conflict("Invalid number for " + key);
+        }
     }
 
     private static ResponseStatusException notFound(String message) {

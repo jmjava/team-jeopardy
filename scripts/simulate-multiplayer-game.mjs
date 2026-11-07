@@ -182,6 +182,15 @@ function teamScore(snap, name) {
   return (snap.teams || []).find((t) => t.name === name)?.score ?? 0
 }
 
+function legalWager(score, face) {
+  const max = score < 5 ? 1000 : score
+  return Math.max(5, Math.min(face, max))
+}
+
+function teamId(snap, name) {
+  return (snap.teams || []).find((t) => t.name === name)?.id
+}
+
 function assertScores(snap, expected, label) {
   for (const [name, value] of Object.entries(expected)) {
     assert(teamScore(snap, name) === value, `${label}: ${name} expected ${value}, got ${teamScore(snap, name)}`)
@@ -224,7 +233,27 @@ async function playThroughClueStomp(table, { incorrectFirst = true, expected } =
   await Promise.all(players.map((p) => p.stomp.waitFor((s) => s.phase === 'CLUE_OPEN')))
 
   const [p1, p2] = players
-  if (incorrectFirst && p2) {
+  if (clue.dailyDouble) {
+    const teamName = 'Blue Owls'
+    const score = expected ? expected[teamName] || 0 : teamScore(host.latest, teamName)
+    const wager = legalWager(score, clue.value)
+    const correct = !incorrectFirst
+    p1.stomp.send(`/app/room/${roomId}/action`, { playerId: p1.playerId, type: 'BUZZ', payload: {} })
+    await host.waitFor((s) => s.phase === 'DD_WAGER')
+    p1.stomp.send(`/app/room/${roomId}/action`, {
+      playerId: p1.playerId,
+      type: 'SET_WAGER',
+      payload: { amount: wager }
+    })
+    const locked = await host.waitFor((s) => s.phase === 'BUZZ_LOCKED')
+    assert(locked.activeClue?.prompt, 'Daily Double clue shows after the wager')
+    host.send(`/app/room/${roomId}/action`, {
+      playerId: hostId,
+      type: 'JUDGE',
+      payload: { correct }
+    })
+    if (expected) expected[teamName] = (expected[teamName] || 0) + (correct ? wager : -wager)
+  } else if (incorrectFirst && p2) {
     p1.stomp.send(`/app/room/${roomId}/action`, { playerId: p1.playerId, type: 'BUZZ', payload: {} })
     const locked = await host.waitFor((s) => s.phase === 'BUZZ_LOCKED')
     assert(locked.activeClue?.buzzedPlayerName, 'Buzz should record player')
@@ -264,7 +293,9 @@ async function playThroughClueStomp(table, { incorrectFirst = true, expected } =
   assert(revealed.activeClue?.responseVisible, 'Answer should be visible after correct')
   if (expected) assertScores(revealed, expected, 'stomp after judge')
   host.send(`/app/room/${roomId}/action`, { playerId: hostId, type: 'RETURN_BOARD', payload: {} })
-  const next = await host.waitFor((s) => s.phase === 'BOARD' || s.phase === 'FINISHED')
+  const next = await host.waitFor(
+    (s) => s.phase === 'BOARD' || s.phase === 'FINISHED' || s.phase === 'FINAL_CATEGORY'
+  )
   if (expected) assertScores(next, expected, 'stomp after return')
   return next
 }
@@ -283,7 +314,10 @@ async function playFullBoardStomp(table) {
     console.log(
       `    clue ${round}/${start.total} remaining=${stats.remaining} ${scoreboard(phase)} phase=${phase.phase}`
     )
-    if (phase.phase === 'FINISHED') break
+    if (phase.phase === 'FINISHED' || phase.phase === 'FINAL_CATEGORY') break
+  }
+  if (phase.phase === 'FINAL_CATEGORY') {
+    phase = await playTypedFinalStomp(table, expected)
   }
   assert(phase.phase === 'FINISHED', `Expected FINISHED after ${round} clues, got ${phase.phase}`)
   assert(boardStats(phase).remaining === 0, 'Board should be fully answered')
@@ -345,7 +379,19 @@ async function playThroughClue(roomId, hostId, players, { incorrectFirst = true,
   assert(snap.activeClue?.prompt, 'Players should see prompt after open')
 
   const [p1, p2] = players
-  if (incorrectFirst && p2) {
+  if (clue.dailyDouble) {
+    const teamName = 'Blue Owls'
+    const score = expected ? expected[teamName] || 0 : teamScore(snap, teamName)
+    const wager = legalWager(score, clue.value)
+    const correct = !incorrectFirst
+    snap = await action(roomId, p1.playerId, 'BUZZ')
+    assert(snap.phase === 'DD_WAGER', `Expected DD_WAGER, got ${snap.phase}`)
+    snap = await action(roomId, p1.playerId, 'SET_WAGER', { amount: wager })
+    assert(snap.phase === 'BUZZ_LOCKED', 'Daily Double locks after the wager')
+    assert(snap.activeClue?.prompt, 'Daily Double clue shows after the wager')
+    snap = await action(roomId, hostId, 'JUDGE', { correct })
+    if (expected) expected[teamName] = (expected[teamName] || 0) + (correct ? wager : -wager)
+  } else if (incorrectFirst && p2) {
     snap = await action(roomId, p1.playerId, 'BUZZ')
     assert(snap.phase === 'BUZZ_LOCKED', 'Expected BUZZ_LOCKED')
     assert(snap.activeClue?.buzzedPlayerName, 'Buzz should record player')
@@ -387,10 +433,103 @@ async function playThroughClue(roomId, hostId, players, { incorrectFirst = true,
 
   snap = await action(roomId, hostId, 'RETURN_BOARD')
   assert(
-    snap.phase === 'BOARD' || snap.phase === 'FINISHED',
-    `Expected BOARD or FINISHED, got ${snap.phase}`
+    snap.phase === 'BOARD' || snap.phase === 'FINISHED' || snap.phase === 'FINAL_CATEGORY',
+    `Expected BOARD, FINISHED, or FINAL_CATEGORY, got ${snap.phase}`
   )
   if (expected) assertScores(snap, expected, 'rest after return')
+  return snap
+}
+
+async function playTypedFinalStomp(table, expected) {
+  const { roomId, hostId, host, display, players } = table
+  const [p1, p2] = players
+  host.send(`/app/room/${roomId}/action`, { playerId: hostId, type: 'START_FINAL_WAGER', payload: {} })
+  await host.waitFor((s) => s.phase === 'FINAL_WAGER')
+  for (const player of players) {
+    player.stomp.send(`/app/room/${roomId}/action`, {
+      playerId: player.playerId,
+      type: 'SET_WAGER',
+      payload: { amount: 5 }
+    })
+  }
+  await host.waitFor((s) => (s.finalRound?.entries || []).filter((e) => e.wagerLocked).length >= players.length)
+  host.send(`/app/room/${roomId}/action`, {
+    playerId: hostId,
+    type: 'START_FINAL_WRITING',
+    payload: { seconds: 30 }
+  })
+  await host.waitFor((s) => s.phase === 'FINAL_WRITING')
+  p1.stomp.send(`/app/room/${roomId}/action`, {
+    playerId: p1.playerId,
+    type: 'SET_FINAL_ANSWER',
+    payload: { text: 'What is the release?' }
+  })
+  if (p2) {
+    p2.stomp.send(`/app/room/${roomId}/action`, {
+      playerId: p2.playerId,
+      type: 'SET_FINAL_ANSWER',
+      payload: { text: 'What is a red herring?' }
+    })
+  }
+  await sleep(150)
+  const hidden = display.latest
+  assert(
+    !(hidden.finalRound?.entries || []).some((e) => e.answer),
+    'Display must hide Final answers until reveal'
+  )
+  host.send(`/app/room/${roomId}/action`, { playerId: hostId, type: 'END_WRITING', payload: {} })
+  await host.waitFor((s) => s.phase === 'FINAL_LOCKED')
+  host.send(`/app/room/${roomId}/action`, { playerId: hostId, type: 'REVEAL', payload: {} })
+  const revealed = await host.waitFor((s) => s.phase === 'FINAL_REVEALED')
+  const blue = teamId(revealed, 'Blue Owls')
+  const red = teamId(revealed, 'Red Foxes')
+  host.send(`/app/room/${roomId}/action`, {
+    playerId: hostId,
+    type: 'JUDGE_FINAL',
+    payload: { teamId: blue, correct: true }
+  })
+  host.send(`/app/room/${roomId}/action`, {
+    playerId: hostId,
+    type: 'JUDGE_FINAL',
+    payload: { teamId: red, correct: false }
+  })
+  const done = await host.waitFor((s) => s.phase === 'FINISHED')
+  if (expected) {
+    expected['Blue Owls'] = (expected['Blue Owls'] || 0) + 5
+    expected['Red Foxes'] = (expected['Red Foxes'] || 0) - 5
+  }
+  return done
+}
+
+async function playTypedFinalRest(roomId, hostId, players, expected) {
+  let snap = await action(roomId, hostId, 'START_FINAL_WAGER')
+  assert(snap.phase === 'FINAL_WAGER', `Expected FINAL_WAGER, got ${snap.phase}`)
+  for (const player of players) {
+    await action(roomId, player.playerId, 'SET_WAGER', { amount: 5 })
+  }
+  snap = await action(roomId, hostId, 'START_FINAL_WRITING', { seconds: 30 })
+  assert(snap.phase === 'FINAL_WRITING', `Expected FINAL_WRITING, got ${snap.phase}`)
+  const [p1, p2] = players
+  await action(roomId, p1.playerId, 'SET_FINAL_ANSWER', { text: 'What is the release?' })
+  if (p2) await action(roomId, p2.playerId, 'SET_FINAL_ANSWER', { text: 'What is a red herring?' })
+  const pub = await must(`/api/rooms/${roomId}`)
+  assert(
+    !(pub.finalRound?.entries || []).some((e) => e.answer),
+    'Public snapshot must hide Final answers until reveal'
+  )
+  snap = await action(roomId, hostId, 'END_WRITING')
+  assert(snap.phase === 'FINAL_LOCKED', `Expected FINAL_LOCKED, got ${snap.phase}`)
+  snap = await action(roomId, hostId, 'REVEAL')
+  assert(snap.phase === 'FINAL_REVEALED', `Expected FINAL_REVEALED, got ${snap.phase}`)
+  const blue = teamId(snap, 'Blue Owls')
+  const red = teamId(snap, 'Red Foxes')
+  await action(roomId, hostId, 'JUDGE_FINAL', { teamId: blue, correct: true })
+  snap = await action(roomId, hostId, 'JUDGE_FINAL', { teamId: red, correct: false })
+  assert(snap.phase === 'FINISHED', `Expected FINISHED after Final, got ${snap.phase}`)
+  if (expected) {
+    expected['Blue Owls'] = (expected['Blue Owls'] || 0) + 5
+    expected['Red Foxes'] = (expected['Red Foxes'] || 0) - 5
+  }
   return snap
 }
 
@@ -409,7 +548,10 @@ async function playFullBoardRest(roomId, hostId, players, label) {
     console.log(
       `    ${label} clue ${round}/${start.total} remaining=${stats.remaining} ${scoreboard(snap)} phase=${snap.phase}`
     )
-    if (snap.phase === 'FINISHED') break
+    if (snap.phase === 'FINISHED' || snap.phase === 'FINAL_CATEGORY') break
+  }
+  if (snap.phase === 'FINAL_CATEGORY') {
+    snap = await playTypedFinalRest(roomId, hostId, players, expected)
   }
   assert(snap.phase === 'FINISHED', `${label} expected FINISHED, got ${snap.phase}`)
   assert(boardStats(snap).remaining === 0, `${label} leftover cells`)

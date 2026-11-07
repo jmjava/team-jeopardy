@@ -12,6 +12,25 @@ public record SavedClueRecord(
         String response,
         String explanation,
         String sourcePath,
-        boolean dailyDouble
+        boolean dailyDouble,
+        boolean finalJeopardy
 ) {
+    public SavedClueRecord(
+            String id,
+            String boardId,
+            String categoryId,
+            String categoryTitle,
+            String clueId,
+            int value,
+            String prompt,
+            String response,
+            String explanation,
+            String sourcePath,
+            boolean dailyDouble
+    ) {
+        this(
+                id, boardId, categoryId, categoryTitle, clueId, value, prompt, response,
+                explanation, sourcePath, dailyDouble, false
+        );
+    }
 }

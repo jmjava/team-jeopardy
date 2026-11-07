@@ -87,6 +87,9 @@ final class RealPlayHttpSupport {
                     expected.get("Blue Owls"), expected.get("Red Foxes"), snap.phase());
         }
 
+        if (snap.phase() == GamePhase.FINAL_CATEGORY) {
+            snap = playFinal(room, expected);
+        }
         assertEquals(GamePhase.FINISHED, snap.phase(), label + " expected FINISHED");
         assertTrue(snap.cells().stream().allMatch(BoardCellState::answered), label + " leftover cells");
         assertScores(snap, expected);
@@ -122,10 +125,16 @@ final class RealPlayHttpSupport {
         GameSnapshot open = actionSnap(room.roomId(), room.hostId(), room.hostToken(), "OPEN_BUZZERS", Map.of());
         assertEquals(GamePhase.CLUE_OPEN, open.phase());
         GameSnapshot publicOpen = getRoom(room.roomId(), null);
-        assertNotNull(publicOpen.activeClue().prompt());
+        if (clue.dailyDouble()) {
+            assertNull(publicOpen.activeClue().prompt(), "Daily Double hides the clue until the wager");
+        } else {
+            assertNotNull(publicOpen.activeClue().prompt());
+        }
         assertNull(publicOpen.activeClue().response());
 
-        GameSnapshot judged = switch (style) {
+        GameSnapshot judged = clue.dailyDouble()
+                ? playDailyDouble(room, clue, style, expected)
+                : switch (style) {
             case FIRST_CORRECT -> {
                 GameSnapshot locked = actionSnap(room.roomId(), room.alexId(), "BUZZ", Map.of());
                 assertEquals(GamePhase.BUZZ_LOCKED, locked.phase());
@@ -154,9 +163,76 @@ final class RealPlayHttpSupport {
         assertEquals(GamePhase.ANSWER_REVEALED, judged.phase());
         assertTrue(judged.activeClue().responseVisible());
         GameSnapshot after = actionSnap(room.roomId(), room.hostId(), room.hostToken(), "RETURN_BOARD", Map.of());
-        assertTrue(after.phase() == GamePhase.BOARD || after.phase() == GamePhase.FINISHED);
+        assertTrue(after.phase() == GamePhase.BOARD
+                || after.phase() == GamePhase.FINISHED
+                || after.phase() == GamePhase.FINAL_CATEGORY);
         assertScores(after, expected);
         return after;
+    }
+
+    private GameSnapshot playDailyDouble(
+            Room room,
+            ClueRef clue,
+            Style style,
+            Map<String, Integer> expected
+    ) throws Exception {
+        if (style == Style.REVEAL_NO_BUZZ) {
+            return actionSnap(room.roomId(), room.hostId(), room.hostToken(), "REVEAL", Map.of());
+        }
+        boolean alexPlays = style != Style.INCORRECT_THEN_REVEAL;
+        boolean correct = style == Style.FIRST_CORRECT;
+        String playerId = alexPlays ? room.alexId() : room.samId();
+        String team = alexPlays ? "Blue Owls" : "Red Foxes";
+        GameSnapshot claimed = actionSnap(room.roomId(), playerId, "BUZZ", Map.of());
+        assertEquals(GamePhase.DD_WAGER, claimed.phase());
+        int wager = dailyDoubleWager(expected.getOrDefault(team, 0), clue.value());
+        GameSnapshot locked = actionSnap(room.roomId(), playerId, "SET_WAGER", Map.of("amount", wager));
+        assertEquals(GamePhase.BUZZ_LOCKED, locked.phase());
+        assertNotNull(getRoom(room.roomId(), null).activeClue().prompt());
+        credit(expected, team, correct ? wager : -wager);
+        GameSnapshot judged = actionSnap(
+                room.roomId(), room.hostId(), room.hostToken(), "JUDGE", Map.of("correct", correct));
+        assertEquals(GamePhase.ANSWER_REVEALED, judged.phase());
+        return judged;
+    }
+
+    private GameSnapshot playFinal(Room room, Map<String, Integer> expected) throws Exception {
+        GameSnapshot wagering = actionSnap(
+                room.roomId(), room.hostId(), room.hostToken(), "START_FINAL_WAGER", Map.of());
+        assertEquals(GamePhase.FINAL_WAGER, wagering.phase());
+        int blueWager = WagerRules.MIN_WAGER;
+        int redWager = WagerRules.MIN_WAGER;
+        actionSnap(room.roomId(), room.alexId(), "SET_WAGER", Map.of("amount", blueWager));
+        actionSnap(room.roomId(), room.samId(), "SET_WAGER", Map.of("amount", redWager));
+        GameSnapshot writing = actionSnap(
+                room.roomId(), room.hostId(), room.hostToken(), "START_FINAL_WRITING", Map.of("seconds", 30));
+        assertEquals(GamePhase.FINAL_WRITING, writing.phase());
+        assertNotNull(getRoom(room.roomId(), null).finalRound().prompt());
+        actionSnap(room.roomId(), room.alexId(), "SET_FINAL_ANSWER", Map.of("text", "What is the release?"));
+        actionSnap(room.roomId(), room.samId(), "SET_FINAL_ANSWER", Map.of("text", "What is a red herring?"));
+        assertTrue(getRoom(room.roomId(), null).finalRound().entries().stream()
+                .allMatch(entry -> entry.answer() == null || entry.answer().isBlank()));
+        GameSnapshot locked = actionSnap(
+                room.roomId(), room.hostId(), room.hostToken(), "END_WRITING", Map.of());
+        assertEquals(GamePhase.FINAL_LOCKED, locked.phase());
+        GameSnapshot revealed = actionSnap(room.roomId(), room.hostId(), room.hostToken(), "REVEAL", Map.of());
+        assertEquals(GamePhase.FINAL_REVEALED, revealed.phase());
+        String blueId = revealed.teams().stream().filter(t -> t.name().equals("Blue Owls")).findFirst().orElseThrow().id();
+        String redId = revealed.teams().stream().filter(t -> t.name().equals("Red Foxes")).findFirst().orElseThrow().id();
+        actionSnap(room.roomId(), room.hostId(), room.hostToken(), "JUDGE_FINAL", Map.of("teamId", blueId, "correct", true));
+        GameSnapshot done = actionSnap(
+                room.roomId(), room.hostId(), room.hostToken(), "JUDGE_FINAL", Map.of("teamId", redId, "correct", false));
+        credit(expected, "Blue Owls", blueWager);
+        credit(expected, "Red Foxes", -redWager);
+        assertEquals(GamePhase.FINISHED, done.phase());
+        assertScores(done, expected);
+        return done;
+    }
+
+    private static int dailyDoubleWager(int score, int face) {
+        int max = WagerRules.maxWager(score);
+        int wager = Math.min(Math.max(WagerRules.MIN_WAGER, face), max);
+        return Math.max(WagerRules.MIN_WAGER, Math.min(wager, max));
     }
 
     static List<ClueRef> jeopardyOrder(GameSnapshot snap) {
