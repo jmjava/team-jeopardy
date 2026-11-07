@@ -43,11 +43,17 @@ let passed = 0
 let failed = 0
 const failures = []
 const hostByRoom = new Map()
+const playerTokens = new Map()
 
 function hostHeaders(roomId, playerId) {
   const cred = hostByRoom.get(roomId)
   if (!cred || cred.hostId !== playerId || !cred.hostToken) return {}
   return { 'X-Host-Token': cred.hostToken }
+}
+
+function playerHeaders(playerId) {
+  const token = playerTokens.get(playerId)
+  return token ? { 'X-Player-Token': token } : {}
 }
 
 async function req(path, options = {}) {
@@ -117,17 +123,21 @@ async function createRoom(title) {
 }
 
 async function join(code, displayName, teamName) {
-  return must('/api/rooms/join', {
+  const joined = await must('/api/rooms/join', {
     method: 'POST',
     body: JSON.stringify({ code, displayName, teamName })
   })
+  if (joined.playerId && joined.playerToken) {
+    playerTokens.set(joined.playerId, joined.playerToken)
+  }
+  return joined
 }
 
 async function action(roomId, playerId, type, payload = {}) {
   return must(`/api/rooms/${roomId}/actions`, {
     method: 'POST',
     body: JSON.stringify({ playerId, type, payload }),
-    headers: hostHeaders(roomId, playerId)
+    headers: { ...hostHeaders(roomId, playerId), ...playerHeaders(playerId) }
   })
 }
 
@@ -135,7 +145,7 @@ async function actionExpectFail(roomId, playerId, type, payload = {}) {
   const result = await req(`/api/rooms/${roomId}/actions`, {
     method: 'POST',
     body: JSON.stringify({ playerId, type, payload }),
-    headers: hostHeaders(roomId, playerId)
+    headers: { ...hostHeaders(roomId, playerId), ...playerHeaders(playerId) }
   })
   assert(!result.ok, `Expected ${type} to fail but got ${result.status}`)
   return result
@@ -336,8 +346,12 @@ async function openRealtimeTable(title) {
     hostToken
   })
   const display = await connectStomp(WS, `/topic/room.${roomId}`)
-  const p1Sock = await connectStomp(WS, `/topic/room.${roomId}`)
-  const p2Sock = await connectStomp(WS, `/topic/room.${roomId}`)
+  const p1Sock = await connectStomp(WS, `/topic/room.${roomId}`, {
+    playerToken: p1.playerToken
+  })
+  const p2Sock = await connectStomp(WS, `/topic/room.${roomId}`, {
+    playerToken: p2.playerToken
+  })
   return {
     roomId,
     code,

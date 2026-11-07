@@ -31,7 +31,12 @@ public final class Dto {
     ) {
     }
 
-    public record JoinRoomResponse(GameSnapshot snapshot, String playerId) {
+    public record JoinRoomResponse(
+            GameSnapshot snapshot,
+            String playerId,
+            /** Present only on this response. Required to act as this seat or read its Final line. */
+            String playerToken
+    ) {
     }
 
     public record IngestRequest(

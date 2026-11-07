@@ -53,6 +53,7 @@ class MultiplayerStompTest {
 
     private String hostId;
     private String hostToken;
+    private final Map<String, String> playerTokens = new HashMap<>();
 
     @Test
     void hostPlayersAndDisplayShareOneRealtimeTable() throws Exception {
@@ -63,8 +64,8 @@ class MultiplayerStompTest {
 
         JsonNode p1 = post("/api/rooms/join", Map.of("code", code, "displayName", "Alex", "teamName", "Blue Owls"));
         JsonNode p2 = post("/api/rooms/join", Map.of("code", code, "displayName", "Sam", "teamName", "Red Foxes"));
-        String p1Id = p1.path("playerId").asText();
-        String p2Id = p2.path("playerId").asText();
+        String p1Id = rememberPlayer(p1);
+        String p2Id = rememberPlayer(p2);
 
         SnapshotInbox hostInbox = connect("/topic/room." + roomId + ".host");
         SnapshotInbox playerInbox = connect("/topic/room." + roomId);
@@ -153,10 +154,8 @@ class MultiplayerStompTest {
         rememberHost(created);
         String roomId = created.path("snapshot").path("roomId").asText();
         String code = created.path("snapshot").path("code").asText();
-        String p1Id = post("/api/rooms/join", Map.of("code", code, "displayName", "Alex", "teamName", "Blue Owls"))
-                .path("playerId").asText();
-        String p2Id = post("/api/rooms/join", Map.of("code", code, "displayName", "Sam", "teamName", "Red Foxes"))
-                .path("playerId").asText();
+        String p1Id = rememberPlayer(post("/api/rooms/join", Map.of("code", code, "displayName", "Alex", "teamName", "Blue Owls")));
+        String p2Id = rememberPlayer(post("/api/rooms/join", Map.of("code", code, "displayName", "Sam", "teamName", "Red Foxes")));
 
         SnapshotInbox hostInbox = connect("/topic/room." + roomId + ".host");
         SnapshotInbox playerInbox = connect("/topic/room." + roomId);
@@ -248,7 +247,7 @@ class MultiplayerStompTest {
         String code = created.path("snapshot").path("code").asText();
 
         JsonNode p1 = post("/api/rooms/join", Map.of("code", code, "displayName", "Alex", "teamName", "Blue Owls"));
-        String p1Id = p1.path("playerId").asText();
+        String p1Id = rememberPlayer(p1);
 
         SnapshotInbox hostInbox = connect("/topic/room." + roomId + ".host");
         ErrorInbox errors = connectErrors("/topic/room." + roomId + ".errors");
@@ -285,6 +284,12 @@ class MultiplayerStompTest {
     private void rememberHost(JsonNode created) {
         hostId = created.path("hostPlayerId").asText();
         hostToken = created.path("hostToken").asText();
+    }
+
+    private String rememberPlayer(JsonNode joined) {
+        String playerId = joined.path("playerId").asText();
+        playerTokens.put(playerId, joined.path("playerToken").asText());
+        return playerId;
     }
 
     private JsonNode post(String path, Map<String, ?> body) throws Exception {
@@ -380,6 +385,10 @@ class MultiplayerStompTest {
         headers.setContentType(MediaType.APPLICATION_JSON);
         if (hostToken != null && action.playerId() != null && action.playerId().equals(hostId)) {
             headers.add("hostToken", hostToken);
+        }
+        String playerToken = playerTokens.get(action.playerId());
+        if (playerToken != null) {
+            headers.add("playerToken", playerToken);
         }
         session.send(headers, action);
     }

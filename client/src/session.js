@@ -40,6 +40,9 @@ export function saveSession(session, storage = defaultSessionStorage()) {
   if (session.hostToken) {
     payload.hostToken = session.hostToken
   }
+  if (session.playerToken) {
+    payload.playerToken = session.playerToken
+  }
   storage.setItem(SESSION_KEY, JSON.stringify(payload))
   return payload
 }

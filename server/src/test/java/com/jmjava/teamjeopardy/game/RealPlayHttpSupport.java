@@ -43,6 +43,7 @@ final class RealPlayHttpSupport {
     private final TestRestTemplate rest;
     private final ObjectMapper mapper;
     private final int port;
+    private final Map<String, String> playerTokens = new HashMap<>();
 
     RealPlayHttpSupport(TestRestTemplate rest, ObjectMapper mapper, int port) {
         this.rest = rest;
@@ -58,7 +59,11 @@ final class RealPlayHttpSupport {
         String hostToken = created.path("hostToken").asText();
         JsonNode alex = post("/api/rooms/join", Map.of("code", code, "displayName", "Alex", "teamName", "Blue Owls"));
         JsonNode sam = post("/api/rooms/join", Map.of("code", code, "displayName", "Sam", "teamName", "Red Foxes"));
-        return new Room(roomId, code, hostId, hostToken, alex.path("playerId").asText(), sam.path("playerId").asText());
+        String alexId = alex.path("playerId").asText();
+        String samId = sam.path("playerId").asText();
+        playerTokens.put(alexId, alex.path("playerToken").asText());
+        playerTokens.put(samId, sam.path("playerToken").asText());
+        return new Room(roomId, code, hostId, hostToken, alexId, samId);
     }
 
     GameSnapshot playInstalledBoardToFinished(Room room, String label) throws Exception {
@@ -261,6 +266,12 @@ final class RealPlayHttpSupport {
         headers.setContentType(MediaType.APPLICATION_JSON);
         if (hostToken != null && !hostToken.isBlank()) {
             headers.set("X-Host-Token", hostToken);
+        }
+        if (body instanceof Map<?, ?> map && map.get("playerId") instanceof String playerId) {
+            String playerToken = playerTokens.get(playerId);
+            if (playerToken != null && !playerToken.isBlank()) {
+                headers.set("X-Player-Token", playerToken);
+            }
         }
         ResponseEntity<String> response = rest.postForEntity(
                 "http://localhost:" + port + path,

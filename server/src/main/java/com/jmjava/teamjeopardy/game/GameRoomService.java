@@ -32,6 +32,8 @@ public class GameRoomService {
 
     private final Map<String, GameRoom> roomsById = new ConcurrentHashMap<>();
     private final Map<String, String> roomIdByCode = new ConcurrentHashMap<>();
+    /** Join secret. Never copied onto a snapshot; player ids are already public. */
+    private final Map<String, String> playerTokens = new ConcurrentHashMap<>();
     private final SecureRandom random = new SecureRandom();
 
     @Value("${team-jeopardy.max-teams:6}")
@@ -50,6 +52,18 @@ public class GameRoomService {
             String hostToken
     ) {
     }
+
+    /**
+     * These actions name a contestant. The id is on every public snapshot, so
+     * the join secret is required. Without it, a spectator can read or replace
+     * that seat's sealed Final wager and answer.
+     */
+    private static final Set<String> PLAYER_ACTIONS = Set.of(
+            "BUZZ",
+            "SET_WAGER",
+            "SET_FINAL_ANSWER",
+            "CREATE_TEAM"
+    );
 
     private static final Set<String> HOST_ACTIONS = Set.of(
             "START",
@@ -70,7 +84,7 @@ public class GameRoomService {
             "ADMIT_ALL"
     );
 
-    public record JoinResult(GameSnapshot snapshot, String playerId) {
+    public record JoinResult(GameSnapshot snapshot, String playerId, String playerToken) {
     }
 
     public CreateRoomResult createRoom(String hostName, String title) {
@@ -95,6 +109,7 @@ public class GameRoomService {
                 throw conflict("Room already finished");
             }
             String playerId = UUID.randomUUID().toString();
+            String playerToken = UUID.randomUUID().toString();
             String name = blankTo(displayName, "Player");
             final String teamId;
             if (teamName != null && !teamName.isBlank()) {
@@ -111,8 +126,9 @@ public class GameRoomService {
             }
             // Players wait in lobby until the moderator admits them.
             r.getPlayers().put(playerId, new Player(playerId, name, teamId, false, false, null));
+            playerTokens.put(playerId, playerToken);
             r.bumpRevision();
-            return new JoinResult(r.publicSnapshot(), playerId);
+            return new JoinResult(r.publicSnapshot(), playerId, playerToken);
         });
     }
 
@@ -599,11 +615,21 @@ public class GameRoomService {
      * @param hostToken secret from room creation; required for moderator actions and a host SYNC view
      */
     public GameSnapshot applyAction(String roomId, GameAction action, String hostToken) {
+        return applyAction(roomId, action, hostToken, null);
+    }
+
+    /**
+     * @param playerToken secret from join; required for contestant actions and that seat's Final line
+     */
+    public GameSnapshot applyAction(String roomId, GameAction action, String hostToken, String playerToken) {
         String type = action.type() == null ? "" : action.type().toUpperCase(Locale.ROOT);
         String playerId = action.playerId();
         Map<String, Object> payload = action.payload() == null ? Map.of() : action.payload();
         if (HOST_ACTIONS.contains(type)) {
             assertHostCredential(roomId, playerId, hostToken);
+        }
+        if (PLAYER_ACTIONS.contains(type)) {
+            assertPlayerCredential(playerId, playerToken);
         }
         return switch (type) {
             case "START" -> startGame(roomId, playerId);
@@ -629,7 +655,7 @@ public class GameRoomService {
             case "ADMIT_PLAYER" -> admitPlayer(roomId, playerId, stringPayload(payload, "playerId"));
             case "ADMIT_ALL" -> admitAll(roomId, playerId);
             case "CREATE_TEAM" -> createTeam(roomId, playerId, stringPayload(payload, "teamName"));
-            case "SYNC" -> viewFor(roomId, playerId, hostToken);
+            case "SYNC" -> viewFor(roomId, playerId, hostToken, playerToken);
             default -> throw conflict("Unknown action: " + type);
         };
     }
@@ -652,18 +678,37 @@ public class GameRoomService {
         }
     }
 
+    public boolean playerCredentialMatches(String playerId, String playerToken) {
+        if (playerId == null || playerToken == null) {
+            return false;
+        }
+        return tokenMatches(playerTokens.get(playerId), playerToken);
+    }
+
+    public void assertPlayerCredential(String playerId, String playerToken) {
+        if (!playerCredentialMatches(playerId, playerToken)) {
+            throw conflict("Player credential required");
+        }
+    }
+
     /**
      * Host view only when the create-room token is presented.
-     * A seated player sees their own Final line; everyone else gets the public snapshot.
+     * A seated player sees their own Final line only with the join secret.
+     * Everyone else gets the public snapshot.
      */
     public GameSnapshot viewFor(String roomId, String playerId, String hostToken) {
+        return viewFor(roomId, playerId, hostToken, null);
+    }
+
+    public GameSnapshot viewFor(String roomId, String playerId, String hostToken, String playerToken) {
         return withRoomId(roomId, room -> {
             if (playerId != null && playerId.equals(room.getHostPlayerId()) && tokenMatches(room.getHostToken(), hostToken)) {
                 return room.hostSnapshot();
             }
             if (playerId != null
                     && !playerId.equals(room.getHostPlayerId())
-                    && room.getPlayers().containsKey(playerId)) {
+                    && room.getPlayers().containsKey(playerId)
+                    && playerCredentialMatches(playerId, playerToken)) {
                 return room.playerSnapshot(playerId);
             }
             return room.publicSnapshot();

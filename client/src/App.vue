@@ -42,7 +42,8 @@ const session = reactive({
   displayName: '',
   isHost: false,
   admitted: false,
-  hostToken: ''
+  hostToken: '',
+  playerToken: ''
 })
 
 const snapshot = ref(null)
@@ -136,7 +137,12 @@ function acceptSnapshot(next) {
 async function resyncFromServer() {
   if (!session.roomId) return
   try {
-    const snap = await getRoom(session.roomId, session.playerId || undefined, session.hostToken || undefined)
+    const snap = await getRoom(
+      session.roomId,
+      session.playerId || undefined,
+      session.hostToken || undefined,
+      session.playerToken || undefined
+    )
     acceptSnapshot(snap)
   } catch (err) {
     console.warn('Realtime resync failed', err)
@@ -149,6 +155,7 @@ function bindSocket(roomId, isHost) {
     roomId,
     playerId: session.playerId,
     hostToken: session.hostToken,
+    playerToken: session.playerToken,
     isHost,
     onSnapshot: (next) => acceptSnapshot(next),
     onStatus: (status) => {
@@ -181,6 +188,7 @@ function applySeat(result, { isHost, displayName, hostName }) {
   session.isHost = isHost
   session.admitted = isHost
   session.hostToken = isHost ? (result.hostToken || '') : ''
+  session.playerToken = result.playerToken || ''
   snapshot.value = null
   acceptSnapshot(result.snapshot)
   bindSocket(session.roomId, session.isHost)
@@ -248,7 +256,8 @@ async function runAction(type, payload = {}) {
     }
     acceptSnapshot(await postAction(session.roomId, {
       ...body,
-      hostToken: session.hostToken || undefined
+      hostToken: session.hostToken || undefined,
+      playerToken: session.playerToken || undefined
     }))
   } catch (err) {
     error.value = err.message
@@ -452,6 +461,7 @@ function leaveRoom() {
   session.isHost = false
   session.admitted = false
   session.hostToken = ''
+  session.playerToken = ''
   snapshot.value = null
   ingestSummary.value = null
   socketStatus.value = 'idle'
@@ -464,7 +474,12 @@ async function restoreSeat() {
   if (!saved) return
   restoring.value = true
   try {
-    const snap = await getRoom(saved.roomId, saved.playerId, saved.hostToken || undefined)
+    const snap = await getRoom(
+      saved.roomId,
+      saved.playerId,
+      saved.hostToken || undefined,
+      saved.playerToken || undefined
+    )
     session.roomId = snap.roomId
     session.code = snap.code || saved.code
     session.playerId = saved.playerId
@@ -472,6 +487,7 @@ async function restoreSeat() {
     session.displayName = saved.displayName
     session.isHost = saved.isHost || snap.hostPlayerId === saved.playerId
     session.hostToken = session.isHost ? (saved.hostToken || '') : ''
+    session.playerToken = saved.playerToken || ''
     snapshot.value = null
     acceptSnapshot(snap)
     const self = (snap.players || []).find((p) => p.id === session.playerId)
