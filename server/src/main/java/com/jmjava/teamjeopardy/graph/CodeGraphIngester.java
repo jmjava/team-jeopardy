@@ -2,6 +2,7 @@ package com.jmjava.teamjeopardy.graph;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.jmjava.teamjeopardy.ingest.IngestedTree;
 import com.jmjava.teamjeopardy.ingest.enrich.GraphEnricher;
 import com.jmjava.teamjeopardy.ingest.enrich.JavaClassHierarchyEnricher;
 import com.jmjava.teamjeopardy.ingest.enrich.VueComponentHierarchyEnricher;
@@ -125,7 +126,7 @@ public class CodeGraphIngester {
 
         try {
             // Maven / Gradle are optional adapters — skipped when those markers are absent.
-            if (kind == ProjectKind.MAVEN || Files.exists(absolute.resolve("pom.xml"))) {
+            if (kind == ProjectKind.MAVEN || IngestedTree.isContainedRegularFile(absolute, absolute.resolve("pom.xml"))) {
                 mavenReactorIngester.ingestInto(graph, absolute);
             }
             if (kind == ProjectKind.GRADLE || projectDetector.hasGradleBuild(absolute)) {
@@ -142,7 +143,7 @@ public class CodeGraphIngester {
         }
 
         Path packageJson = absolute.resolve("package.json");
-        if (Files.exists(packageJson)) {
+        if (IngestedTree.isContainedRegularFile(absolute, packageJson)) {
             parsePackageJson(graph, absolute.relativize(packageJson).toString().replace('\\', '/'),
                     Files.readString(packageJson, StandardCharsets.UTF_8));
         }
@@ -204,7 +205,7 @@ public class CodeGraphIngester {
     private List<Path> listSourceFiles(Path root) throws IOException {
         try (Stream<Path> walk = Files.walk(root)) {
             return walk
-                    .filter(Files::isRegularFile)
+                    .filter(p -> IngestedTree.isContainedRegularFile(root, p))
                     .filter(this::isSourceFile)
                     .filter(p -> {
                         for (Path part : root.relativize(p)) {

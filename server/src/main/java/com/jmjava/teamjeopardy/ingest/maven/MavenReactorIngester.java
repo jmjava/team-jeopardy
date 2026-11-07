@@ -3,6 +3,7 @@ package com.jmjava.teamjeopardy.ingest.maven;
 import com.jmjava.teamjeopardy.graph.CodeEdge;
 import com.jmjava.teamjeopardy.graph.CodeGraph;
 import com.jmjava.teamjeopardy.graph.CodeNode;
+import com.jmjava.teamjeopardy.ingest.IngestedTree;
 import com.jmjava.teamjeopardy.ingest.maven.MavenPomParser.Dependency;
 import com.jmjava.teamjeopardy.ingest.maven.MavenPomParser.ParsedModule;
 import com.jmjava.teamjeopardy.ingest.maven.MavenPomParser.Plugin;
@@ -32,7 +33,7 @@ public class MavenReactorIngester {
 
     public List<ParsedModule> ingestInto(CodeGraph graph, Path reactorRoot) throws Exception {
         Path rootPom = reactorRoot.resolve("pom.xml");
-        if (!Files.isRegularFile(rootPom)) {
+        if (!IngestedTree.isContainedRegularFile(reactorRoot, rootPom)) {
             throw new IllegalArgumentException("No pom.xml at " + reactorRoot);
         }
 
@@ -49,14 +50,14 @@ public class MavenReactorIngester {
             discovered.put(pom.toString(), module);
             for (String child : module.modules()) {
                 Path childPom = pom.getParent().resolve(child).resolve("pom.xml");
-                if (Files.isRegularFile(childPom)) {
+                if (IngestedTree.isContainedRegularFile(reactorRoot, childPom)) {
                     queue.add(childPom);
                 }
             }
         }
 
         try (Stream<Path> walk = Files.walk(reactorRoot)) {
-            walk.filter(p -> Files.isRegularFile(p) && "pom.xml".equals(p.getFileName().toString()))
+            walk.filter(p -> IngestedTree.isContainedRegularFile(reactorRoot, p) && "pom.xml".equals(p.getFileName().toString()))
                     .forEach(pom -> {
                         String abs = pom.toAbsolutePath().normalize().toString();
                         if (!discovered.containsKey(abs)) {

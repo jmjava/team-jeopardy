@@ -3,6 +3,7 @@ package com.jmjava.teamjeopardy.ingest.gradle;
 import com.jmjava.teamjeopardy.graph.CodeEdge;
 import com.jmjava.teamjeopardy.graph.CodeGraph;
 import com.jmjava.teamjeopardy.graph.CodeNode;
+import com.jmjava.teamjeopardy.ingest.IngestedTree;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -44,8 +45,8 @@ public class GradleProjectIngester {
             Pattern.MULTILINE);
 
     public List<String> ingestInto(CodeGraph graph, Path root) throws IOException {
-        Path settings = firstExisting(root, "settings.gradle.kts", "settings.gradle");
-        Path rootBuild = firstExisting(root, "build.gradle.kts", "build.gradle");
+        Path settings = firstExisting(root, root, "settings.gradle.kts", "settings.gradle");
+        Path rootBuild = firstExisting(root, root, "build.gradle.kts", "build.gradle");
 
         Set<String> modulePaths = new LinkedHashSet<>();
         modulePaths.add(":");
@@ -80,7 +81,7 @@ public class GradleProjectIngester {
             }
             String dir = modulePath.substring(1).replace(':', '/');
             Path moduleDir = root.resolve(dir);
-            Path build = firstExisting(moduleDir, "build.gradle.kts", "build.gradle");
+            Path build = firstExisting(root, moduleDir, "build.gradle.kts", "build.gradle");
             projectModule(graph, modulePath, dir, build == null ? dir : root.relativize(build).toString().replace('\\', '/'));
             if (build != null) {
                 parseBuildScript(graph, root, build, modulePath);
@@ -89,7 +90,7 @@ public class GradleProjectIngester {
 
         // Catch nested build scripts not listed in settings (broken/partial trees)
         try (Stream<Path> walk = Files.walk(root, 6)) {
-            walk.filter(Files::isRegularFile)
+            walk.filter(p -> IngestedTree.isContainedRegularFile(root, p))
                     .filter(p -> {
                         String name = p.getFileName().toString();
                         return "build.gradle".equals(name) || "build.gradle.kts".equals(name);
@@ -213,10 +214,10 @@ public class GradleProjectIngester {
         return parts.length >= 2 ? parts[1] : notation;
     }
 
-    private static Path firstExisting(Path dir, String... names) {
+    private static Path firstExisting(Path root, Path dir, String... names) {
         for (String name : names) {
             Path candidate = dir.resolve(name);
-            if (Files.isRegularFile(candidate)) {
+            if (IngestedTree.isContainedRegularFile(root, candidate)) {
                 return candidate;
             }
         }

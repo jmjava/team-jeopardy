@@ -2,6 +2,7 @@ package com.jmjava.teamjeopardy.graph;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.jmjava.teamjeopardy.ingest.IngestedTree;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
@@ -21,9 +22,9 @@ public class ProjectDetector {
             throw new IllegalArgumentException("Not a directory: " + absolute);
         }
 
-        boolean hasPom = Files.exists(absolute.resolve("pom.xml"));
+        boolean hasPom = IngestedTree.isContainedRegularFile(absolute, absolute.resolve("pom.xml"));
         boolean hasGradle = hasGradleBuild(absolute);
-        boolean hasPackageJson = Files.exists(absolute.resolve("package.json"));
+        boolean hasPackageJson = IngestedTree.isContainedRegularFile(absolute, absolute.resolve("package.json"));
         boolean hasPyProject = Files.exists(absolute.resolve("pyproject.toml"))
                 || Files.exists(absolute.resolve("requirements.txt"))
                 || Files.exists(absolute.resolve("setup.py"));
@@ -54,15 +55,15 @@ public class ProjectDetector {
     }
 
     public boolean hasGradleBuild(Path root) {
-        return Files.exists(root.resolve("settings.gradle"))
-                || Files.exists(root.resolve("settings.gradle.kts"))
-                || Files.exists(root.resolve("build.gradle"))
-                || Files.exists(root.resolve("build.gradle.kts"));
+        return IngestedTree.isContainedRegularFile(root, root.resolve("settings.gradle"))
+                || IngestedTree.isContainedRegularFile(root, root.resolve("settings.gradle.kts"))
+                || IngestedTree.isContainedRegularFile(root, root.resolve("build.gradle"))
+                || IngestedTree.isContainedRegularFile(root, root.resolve("build.gradle.kts"));
     }
 
     private boolean looksLikeVue(Path root) throws IOException {
         Path packageJson = root.resolve("package.json");
-        if (Files.exists(packageJson)) {
+        if (IngestedTree.isContainedRegularFile(root, packageJson)) {
             JsonNode json = mapper.readTree(Files.readString(packageJson));
             if (dependsOn(json, "vue") || dependsOn(json, "@vitejs/plugin-vue") || dependsOn(json, "nuxt")) {
                 return true;
@@ -96,7 +97,7 @@ public class ProjectDetector {
     private boolean hasVueFiles(Path root) throws IOException {
         try (Stream<Path> walk = Files.walk(root, 6)) {
             return walk
-                    .filter(Files::isRegularFile)
+                    .filter(p -> IngestedTree.isContainedRegularFile(root, p))
                     .filter(p -> p.getFileName().toString().endsWith(".vue"))
                     .filter(p -> {
                         for (Path part : root.relativize(p)) {

@@ -3,6 +3,7 @@ package com.jmjava.teamjeopardy.pattern;
 import com.jmjava.teamjeopardy.graph.CodeEdge;
 import com.jmjava.teamjeopardy.graph.CodeGraph;
 import com.jmjava.teamjeopardy.graph.CodeNode;
+import com.jmjava.teamjeopardy.ingest.IngestedTree;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
@@ -221,7 +222,7 @@ public class JavaDesignPatternStrategy implements PatternStrategy {
             return facts;
         }
         try (var walk = Files.walk(root)) {
-            for (Path file : walk.filter(p -> p.toString().endsWith(".java")).filter(Files::isRegularFile).toList()) {
+            for (Path file : walk.filter(p -> p.toString().endsWith(".java")).filter(p -> IngestedTree.isContainedRegularFile(root, p)).toList()) {
                 if (isSkipped(root, file)) {
                     continue;
                 }

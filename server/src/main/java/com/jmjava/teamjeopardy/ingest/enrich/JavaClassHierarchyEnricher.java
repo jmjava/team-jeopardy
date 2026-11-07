@@ -3,6 +3,7 @@ package com.jmjava.teamjeopardy.ingest.enrich;
 import com.jmjava.teamjeopardy.graph.CodeEdge;
 import com.jmjava.teamjeopardy.graph.CodeGraph;
 import com.jmjava.teamjeopardy.graph.CodeNode;
+import com.jmjava.teamjeopardy.ingest.IngestedTree;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -78,7 +79,7 @@ public class JavaClassHierarchyEnricher implements GraphEnricher {
 
         try (Stream<Path> walk = Files.walk(root)) {
             List<Path> javaFiles = walk
-                    .filter(Files::isRegularFile)
+                    .filter(p -> IngestedTree.isContainedRegularFile(root, p))
                     .filter(p -> p.getFileName().toString().endsWith(".java"))
                     .filter(p -> !isSkipped(root, p))
                     .toList();
