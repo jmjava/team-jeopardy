@@ -185,6 +185,8 @@ Share the **room code** or a player link (`/?code=ABC123`). Refresh keeps your s
 
 Remote clients share a monotonic `revision` on every snapshot. The Vue app drops late packets and **GET-resyncs on every STOMP connect** so a dropped player or display catches up without waiting for the next host action. Buzz races are serialized on the room lock: one winner; losers stay connected and get a per-player STOMP receipt (`/topic/room.{id}.player.{playerId}`). A miss locks that player out of the rest of the clue.
 
+Creating a room returns a `hostToken` that is absent from snapshots and share links. Moderator actions and `/topic/room.{id}.host` require it (`X-Host-Token` on HTTP, `hostToken` on STOMP). Prompts and answers stay off the public snapshot until the host reveals them.
+
 ### Keyboard
 
 | Who | Keys |

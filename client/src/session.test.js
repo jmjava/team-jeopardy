@@ -43,6 +43,24 @@ describe('session', () => {
     expect(storage.getItem(SESSION_KEY)).toBeNull()
   })
 
+  it('keeps the host token on the seat and nowhere else', () => {
+    const storage = memory()
+    const saved = saveSession(
+      {
+        roomId: 'room-1',
+        code: 'ABC123',
+        playerId: 'host-1',
+        displayName: 'Pat',
+        isHost: true,
+        hostToken: 'tok-1'
+      },
+      storage
+    )
+    expect(saved.hostToken).toBe('tok-1')
+    expect(loadSession(storage).hostToken).toBe('tok-1')
+    expect(playerJoinUrl('ABC123', 'http://localhost:5173/')).not.toContain('tok-1')
+  })
+
   it('ignores incomplete payloads', () => {
     const storage = memory()
     expect(saveSession({ roomId: 'x' }, storage)).toBeNull()

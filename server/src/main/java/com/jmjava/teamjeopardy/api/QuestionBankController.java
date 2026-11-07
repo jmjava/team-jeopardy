@@ -22,6 +22,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestPart;
@@ -232,7 +233,11 @@ public class QuestionBankController {
      * Install a previously saved guide-generated board into a room (no re-ingest).
      */
     @PostMapping("/rooms/load-board")
-    public Dto.IngestResponse loadBoard(@Valid @RequestBody Dto.LoadBoardRequest request) {
+    public Dto.IngestResponse loadBoard(
+            @Valid @RequestBody Dto.LoadBoardRequest request,
+            @RequestHeader(value = "X-Host-Token", required = false) String hostToken
+    ) {
+        gameRoomService.assertHostCredential(request.roomId(), request.playerId(), hostToken);
         Board board = questionBankService.loadBoard(request.savedBoardId());
         SavedBoardRecord meta = questionBankService.get(request.savedBoardId());
         GameSnapshot snapshot = gameRoomService.installBoard(

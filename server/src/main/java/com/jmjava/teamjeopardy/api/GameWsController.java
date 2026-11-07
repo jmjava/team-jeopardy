@@ -7,6 +7,7 @@ import com.jmjava.teamjeopardy.game.GameSnapshot;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.messaging.handler.annotation.DestinationVariable;
+import org.springframework.messaging.handler.annotation.Header;
 import org.springframework.messaging.handler.annotation.MessageMapping;
 import org.springframework.messaging.handler.annotation.Payload;
 import org.springframework.stereotype.Controller;
@@ -35,11 +36,15 @@ public class GameWsController {
     }
 
     @MessageMapping("/room/{roomId}/action")
-    public void handleAction(@DestinationVariable String roomId, @Payload GameAction action) {
+    public void handleAction(
+            @DestinationVariable String roomId,
+            @Payload GameAction action,
+            @Header(name = "hostToken", required = false) String hostToken
+    ) {
         String playerId = action == null ? null : action.playerId();
         String type = action == null ? null : action.type();
         try {
-            GameSnapshot applied = gameRoomService.applyAction(roomId, action);
+            GameSnapshot applied = gameRoomService.applyAction(roomId, action, hostToken);
             broadcaster.broadcast(roomId);
             broadcaster.sendReceipt(ActionReceipt.accepted(playerId, type, applied));
         } catch (ResponseStatusException ex) {

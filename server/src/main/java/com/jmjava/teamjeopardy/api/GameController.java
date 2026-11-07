@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -50,7 +51,12 @@ public class GameController {
                 request == null ? null : request.hostName(),
                 request == null ? null : request.title()
         );
-        return new Dto.CreateRoomResponse(created.snapshot(), created.hostPlayerId(), created.hostName());
+        return new Dto.CreateRoomResponse(
+                created.snapshot(),
+                created.hostPlayerId(),
+                created.hostName(),
+                created.hostToken()
+        );
     }
 
     @PostMapping("/rooms/join")
@@ -63,9 +69,10 @@ public class GameController {
     @GetMapping("/rooms/{roomId}")
     public GameSnapshot getRoom(
             @PathVariable String roomId,
-            @RequestParam(required = false) String playerId
+            @RequestParam(required = false) String playerId,
+            @RequestHeader(value = "X-Host-Token", required = false) String hostToken
     ) {
-        return gameRoomService.requireSnapshot(roomId, playerId);
+        return gameRoomService.viewFor(roomId, playerId, hostToken);
     }
 
     @GetMapping("/rooms/code/{code}")
@@ -76,7 +83,11 @@ public class GameController {
     }
 
     @PostMapping("/rooms/ingest")
-    public Dto.IngestResponse ingest(@Valid @RequestBody Dto.IngestRequest request) throws IOException {
+    public Dto.IngestResponse ingest(
+            @Valid @RequestBody Dto.IngestRequest request,
+            @RequestHeader(value = "X-Host-Token", required = false) String hostToken
+    ) throws IOException {
+        gameRoomService.assertHostCredential(request.roomId(), request.playerId(), hostToken);
         BoardFactory.BuiltBoard built = buildBoard(request);
         Board board = built.board();
         QuestionHints hints = QuestionHints.of(request.questionHints(), request.questionFocuses());
@@ -93,7 +104,11 @@ public class GameController {
     }
 
     @PostMapping("/rooms/ingest-jira")
-    public Dto.IngestResponse ingestJira(@Valid @RequestBody Dto.JiraIngestRequest request) throws IOException {
+    public Dto.IngestResponse ingestJira(
+            @Valid @RequestBody Dto.JiraIngestRequest request,
+            @RequestHeader(value = "X-Host-Token", required = false) String hostToken
+    ) throws IOException {
+        gameRoomService.assertHostCredential(request.roomId(), request.playerId(), hostToken);
         boolean useFixture = request.useFixture() == null || request.useFixture();
         if (!useFixture && !boardFactory.jiraReleaseClient().isConfigured()) {
             throw new org.springframework.web.server.ResponseStatusException(
@@ -190,11 +205,13 @@ public class GameController {
     @PostMapping("/rooms/{roomId}/actions")
     public GameSnapshot action(
             @PathVariable String roomId,
-            @Valid @RequestBody Dto.ActionRequest request
+            @Valid @RequestBody Dto.ActionRequest request,
+            @RequestHeader(value = "X-Host-Token", required = false) String hostToken
     ) {
         GameSnapshot snapshot = gameRoomService.applyAction(
                 roomId,
-                new GameAction(request.type(), request.playerId(), null, request.payload())
+                new GameAction(request.type(), request.playerId(), null, request.payload()),
+                hostToken
         );
         broadcaster.broadcast(roomId);
         return snapshot;

@@ -14,6 +14,7 @@ export class StompClient {
     this.snapshots = []
     this.latest = null
     this.waiters = []
+    this.extraHeaders = {}
   }
 
   connect(timeoutMs = 8000) {
@@ -44,18 +45,18 @@ export class StompClient {
     })
   }
 
-  subscribe(destination, handler) {
+  subscribe(destination, handler, headers = {}) {
     const id = `sub-${++this.subSeq}`
     this.subscriptions.set(id, { destination, handler })
-    this._sendRaw('SUBSCRIBE', { id, destination })
+    this._sendRaw('SUBSCRIBE', { id, destination, ...headers })
     return id
   }
 
-  send(destination, body) {
+  send(destination, body, headers = {}) {
     const payload = typeof body === 'string' ? body : JSON.stringify(body)
     this._sendRaw(
       'SEND',
-      { destination, 'content-type': 'application/json' },
+      { destination, 'content-type': 'application/json', ...this.extraHeaders, ...headers },
       payload
     )
   }
@@ -130,7 +131,15 @@ export class StompClient {
     } catch {
       // keep raw
     }
-    if (payload && typeof payload === 'object' && payload.phase) {
+    const stale =
+      payload &&
+      typeof payload === 'object' &&
+      payload.phase &&
+      this.latest &&
+      typeof this.latest.revision === 'number' &&
+      typeof payload.revision === 'number' &&
+      payload.revision < this.latest.revision
+    if (payload && typeof payload === 'object' && payload.phase && !stale) {
       this.snapshots.push(payload)
       this.latest = payload
       const pending = this.waiters
@@ -182,11 +191,12 @@ function parseFrame(raw) {
   return { command, headers, body }
 }
 
-export async function connectStomp(url, destination) {
+export async function connectStomp(url, destination, headers = {}) {
   const client = new StompClient(url)
+  client.extraHeaders = headers
   await client.connect()
   if (destination) {
-    client.subscribe(destination)
+    client.subscribe(destination, null, headers)
   }
   return client
 }

@@ -18,6 +18,8 @@ public class GameRoom {
     private final String id;
     private final String code;
     private final String hostPlayerId;
+    /** Secret returned only to the room creator. Never copied onto a snapshot. */
+    private final String hostToken;
     private final Instant createdAt;
     private String title;
     private GamePhase phase = GamePhase.LOBBY;
@@ -35,10 +37,11 @@ public class GameRoom {
         return lock;
     }
 
-    public GameRoom(String id, String code, String hostPlayerId, String title) {
+    public GameRoom(String id, String code, String hostPlayerId, String hostToken, String title) {
         this.id = id;
         this.code = code;
         this.hostPlayerId = hostPlayerId;
+        this.hostToken = hostToken;
         this.title = title;
         this.createdAt = Instant.now();
     }
@@ -53,6 +56,10 @@ public class GameRoom {
 
     public String getHostPlayerId() {
         return hostPlayerId;
+    }
+
+    public String getHostToken() {
+        return hostToken;
     }
 
     public Instant getCreatedAt() {

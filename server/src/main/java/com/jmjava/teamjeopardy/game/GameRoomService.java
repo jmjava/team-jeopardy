@@ -8,12 +8,15 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
@@ -36,24 +39,41 @@ public class GameRoomService {
     @Value("${team-jeopardy.max-players-per-team:8}")
     private int maxPlayersPerTeam;
 
-    public record CreateRoomResult(GameSnapshot snapshot, String hostPlayerId, String hostName) {
+    public record CreateRoomResult(
+            GameSnapshot snapshot,
+            String hostPlayerId,
+            String hostName,
+            String hostToken
+    ) {
     }
+
+    private static final Set<String> HOST_ACTIONS = Set.of(
+            "START",
+            "SELECT_CLUE",
+            "OPEN_BUZZERS",
+            "SHOW_CLUE",
+            "JUDGE",
+            "REVEAL",
+            "RETURN_BOARD",
+            "ADMIT_PLAYER",
+            "ADMIT_ALL"
+    );
 
     public record JoinResult(GameSnapshot snapshot, String playerId) {
     }
 
     public CreateRoomResult createRoom(String hostName, String title) {
         String roomId = UUID.randomUUID().toString();
-        String code = allocateCode();
+        String code = allocateCode(roomId);
         String hostId = UUID.randomUUID().toString();
+        String hostToken = UUID.randomUUID().toString();
         String effectiveHost = blankTo(hostName, "Host");
-        GameRoom room = new GameRoom(roomId, code, hostId, blankTo(title, "Team Jeopardy"));
+        GameRoom room = new GameRoom(roomId, code, hostId, hostToken, blankTo(title, "Team Jeopardy"));
         room.getPlayers().put(hostId, new Player(hostId, effectiveHost, null, true, true, null));
         roomsById.put(roomId, room);
-        roomIdByCode.put(code, roomId);
         return withRoom(room, r -> {
             r.bumpRevision();
-            return new CreateRoomResult(r.hostSnapshot(), hostId, effectiveHost);
+            return new CreateRoomResult(r.hostSnapshot(), hostId, effectiveHost, hostToken);
         });
     }
 
@@ -127,6 +147,9 @@ public class GameRoomService {
     public GameSnapshot startGame(String roomId, String playerId) {
         return withRoomId(roomId, room -> {
             requireHost(room, playerId);
+            if (room.getPhase() != GamePhase.LOBBY) {
+                throw conflict("The game has already started");
+            }
             if (room.getBoard() == null) {
                 throw conflict("Ingest a codebase and generate a board before starting");
             }
@@ -351,9 +374,19 @@ public class GameRoomService {
     }
 
     public GameSnapshot applyAction(String roomId, GameAction action) {
+        return applyAction(roomId, action, null);
+    }
+
+    /**
+     * @param hostToken secret from room creation; required for moderator actions and a host SYNC view
+     */
+    public GameSnapshot applyAction(String roomId, GameAction action, String hostToken) {
         String type = action.type() == null ? "" : action.type().toUpperCase(Locale.ROOT);
         String playerId = action.playerId();
         Map<String, Object> payload = action.payload() == null ? Map.of() : action.payload();
+        if (HOST_ACTIONS.contains(type)) {
+            assertHostCredential(roomId, playerId, hostToken);
+        }
         return switch (type) {
             case "START" -> startGame(roomId, playerId);
             case "SELECT_CLUE" -> selectClue(roomId, playerId, stringPayload(payload, "clueId"));
@@ -365,9 +398,37 @@ public class GameRoomService {
             case "ADMIT_PLAYER" -> admitPlayer(roomId, playerId, stringPayload(payload, "playerId"));
             case "ADMIT_ALL" -> admitAll(roomId, playerId);
             case "CREATE_TEAM" -> createTeam(roomId, playerId, stringPayload(payload, "teamName"));
-            case "SYNC" -> requireSnapshot(roomId, playerId);
+            case "SYNC" -> viewFor(roomId, playerId, hostToken);
             default -> throw conflict("Unknown action: " + type);
         };
+    }
+
+    /**
+     * Host id is on every public snapshot, so it is not a secret. Moderator
+     * actions and the unredacted snapshot require the create-room token.
+     */
+    public boolean hostCredentialMatches(String roomId, String playerId, String hostToken) {
+        GameRoom room = roomsById.get(roomId);
+        if (room == null || playerId == null || hostToken == null) {
+            return false;
+        }
+        return withRoom(room, r -> playerId.equals(r.getHostPlayerId()) && tokenMatches(r.getHostToken(), hostToken));
+    }
+
+    public void assertHostCredential(String roomId, String playerId, String hostToken) {
+        if (!hostCredentialMatches(roomId, playerId, hostToken)) {
+            throw conflict("Only the host can perform this action");
+        }
+    }
+
+    /** Host view only when the create-room token is presented; otherwise the public snapshot. */
+    public GameSnapshot viewFor(String roomId, String playerId, String hostToken) {
+        return withRoomId(roomId, room -> {
+            if (playerId != null && playerId.equals(room.getHostPlayerId()) && tokenMatches(room.getHostToken(), hostToken)) {
+                return room.hostSnapshot();
+            }
+            return room.publicSnapshot();
+        });
     }
 
     public GameSnapshot publicSnapshot(String roomId) {
@@ -474,18 +535,28 @@ public class GameRoomService {
         }
     }
 
-    private String allocateCode() {
+    private String allocateCode(String roomId) {
         for (int attempt = 0; attempt < 50; attempt++) {
             StringBuilder sb = new StringBuilder(6);
             for (int i = 0; i < 6; i++) {
                 sb.append(CODE_ALPHABET[random.nextInt(CODE_ALPHABET.length)]);
             }
             String code = sb.toString();
-            if (!roomIdByCode.containsKey(code)) {
+            if (roomIdByCode.putIfAbsent(code, roomId) == null) {
                 return code;
             }
         }
         throw new IllegalStateException("Unable to allocate room code");
+    }
+
+    private static boolean tokenMatches(String expected, String presented) {
+        if (expected == null || presented == null) {
+            return false;
+        }
+        return MessageDigest.isEqual(
+                expected.getBytes(StandardCharsets.UTF_8),
+                presented.getBytes(StandardCharsets.UTF_8)
+        );
     }
 
     private static String normalizeCode(String code) {

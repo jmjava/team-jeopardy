@@ -42,11 +42,19 @@ const fullGame = process.env.FULL_GAME !== '0'
 let passed = 0
 let failed = 0
 const failures = []
+const hostByRoom = new Map()
+
+function hostHeaders(roomId, playerId) {
+  const cred = hostByRoom.get(roomId)
+  if (!cred || cred.hostId !== playerId || !cred.hostToken) return {}
+  return { 'X-Host-Token': cred.hostToken }
+}
 
 async function req(path, options = {}) {
+  const { headers, ...rest } = options
   const res = await fetch(`${API}${path}`, {
-    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
-    ...options
+    ...rest,
+    headers: { 'Content-Type': 'application/json', ...(headers || {}) }
   })
   const text = await res.text()
   let body
@@ -96,10 +104,15 @@ async function createRoom(title) {
     method: 'POST',
     body: JSON.stringify({ hostName: 'Pat Host', title })
   })
+  hostByRoom.set(created.snapshot.roomId, {
+    hostId: created.hostPlayerId,
+    hostToken: created.hostToken
+  })
   return {
     roomId: created.snapshot.roomId,
     code: created.snapshot.code,
-    hostId: created.hostPlayerId
+    hostId: created.hostPlayerId,
+    hostToken: created.hostToken
   }
 }
 
@@ -113,14 +126,16 @@ async function join(code, displayName, teamName) {
 async function action(roomId, playerId, type, payload = {}) {
   return must(`/api/rooms/${roomId}/actions`, {
     method: 'POST',
-    body: JSON.stringify({ playerId, type, payload })
+    body: JSON.stringify({ playerId, type, payload }),
+    headers: hostHeaders(roomId, playerId)
   })
 }
 
 async function actionExpectFail(roomId, playerId, type, payload = {}) {
   const result = await req(`/api/rooms/${roomId}/actions`, {
     method: 'POST',
-    body: JSON.stringify({ playerId, type, payload })
+    body: JSON.stringify({ playerId, type, payload }),
+    headers: hostHeaders(roomId, playerId)
   })
   assert(!result.ok, `Expected ${type} to fail but got ${result.status}`)
   return result
@@ -129,7 +144,8 @@ async function actionExpectFail(roomId, playerId, type, payload = {}) {
 async function ingest(roomId, hostId, body) {
   return must('/api/rooms/ingest', {
     method: 'POST',
-    body: JSON.stringify({ roomId, playerId: hostId, ...body })
+    body: JSON.stringify({ roomId, playerId: hostId, ...body }),
+    headers: hostHeaders(roomId, hostId)
   })
 }
 
@@ -218,7 +234,7 @@ async function playThroughClueStomp(table, { incorrectFirst = true, expected } =
     assert(host.latest.activeClue?.buzzedPlayerId === p1.playerId, 'First buzzer should keep lock')
 
     host.send(`/app/room/${roomId}/action`, { playerId: hostId, type: 'JUDGE', payload: { correct: false } })
-    await p2.stomp.waitFor((s) => s.phase === 'CLUE_OPEN')
+    await p2.stomp.waitFor((s) => s.phase === 'CLUE_OPEN' && s.revision > locked.revision)
     if (expected) expected['Blue Owls'] = (expected['Blue Owls'] || 0) - clue.value
     p2.stomp.send(`/app/room/${roomId}/action`, { playerId: p2.playerId, type: 'BUZZ', payload: {} })
     await host.waitFor((s) => s.phase === 'BUZZ_LOCKED' && s.activeClue?.buzzedPlayerId === p2.playerId)
@@ -278,10 +294,13 @@ async function playFullBoardStomp(table) {
 }
 
 async function openRealtimeTable(title) {
-  const { roomId, code, hostId } = await createRoom(title)
+  const { roomId, code, hostId, hostToken } = await createRoom(title)
   const p1 = await join(code, 'Alex', 'Blue Owls')
   const p2 = await join(code, 'Sam', 'Red Foxes')
-  const host = await connectStomp(WS, `/topic/room.${roomId}.host`)
+  const host = await connectStomp(WS, `/topic/room.${roomId}.host`, {
+    playerId: hostId,
+    hostToken
+  })
   const display = await connectStomp(WS, `/topic/room.${roomId}`)
   const p1Sock = await connectStomp(WS, `/topic/room.${roomId}`)
   const p2Sock = await connectStomp(WS, `/topic/room.${roomId}`)
@@ -594,6 +613,7 @@ async function main() {
     const p2 = await join(code, 'Sam', 'Red Foxes')
     const board = await must('/api/rooms/ingest-jira', {
       method: 'POST',
+      headers: hostHeaders(roomId, hostId),
       body: JSON.stringify({
         roomId,
         playerId: hostId,
@@ -719,6 +739,7 @@ async function main() {
     try {
       const loaded = await must('/api/rooms/load-board', {
         method: 'POST',
+        headers: hostHeaders(table.roomId, table.hostId),
         body: JSON.stringify({
           roomId: table.roomId,
           playerId: table.hostId,

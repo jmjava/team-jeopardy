@@ -56,7 +56,7 @@ class RealPlaySimulationTest {
                 "boardTitle", "Maven Friday",
                 "questionHints", "Emphasize architecture and QA risk",
                 "questionFocuses", List.of("architecture", "qa", "patterns")
-        ));
+        ), room.hostToken());
         assertTrue(ingest.path("snapshot").path("board").path("categories").size() > 0);
         GameSnapshot finished = play.playInstalledBoardToFinished(room, "maven");
         assertTrue(finished.questionHints() == null || finished.questionHints().contains("architecture")
@@ -74,7 +74,7 @@ class RealPlaySimulationTest {
                 "useFixture", true,
                 "fixture", "one-project",
                 "boardTitle", "Storefront 2.4.0"
-        ));
+        ), room.hostToken());
         assertEquals("jira-fixture", ingest.path("ingestSummary").path("source").asText());
         int categories = ingest.path("snapshot").path("board").path("categories").size();
         assertTrue(categories >= 5 && categories <= 6, "JIRA board categories=" + categories);
@@ -121,7 +121,7 @@ class RealPlaySimulationTest {
                 "roomId", room.roomId(),
                 "playerId", room.hostId(),
                 "savedBoardId", savedId
-        ));
+        ), room.hostToken());
         assertEquals("question-bank", loaded.path("ingestSummary").path("source").asText());
         assertEquals(6, loaded.path("ingestSummary").path("clues").asInt());
         play.playInstalledBoardToFinished(room, "question-bank");
