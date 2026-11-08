@@ -295,7 +295,7 @@ public class GitHubRepoFetcher {
         return "https://github.com/" + repo.owner() + "/" + repo.name() + ".git";
     }
 
-    private static void run(List<String> command, Path cwd, int timeoutSeconds)
+    private void run(List<String> command, Path cwd, int timeoutSeconds)
             throws IOException, InterruptedException {
         ProcessBuilder pb = new ProcessBuilder(command);
         pb.directory(cwd.toFile());
@@ -305,12 +305,28 @@ public class GitHubRepoFetcher {
         String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
         if (!finished) {
             process.destroyForcibly();
-            throw new IOException("Command timed out: " + command + "\n" + output);
+            throw new IOException(failureText("Command timed out: ", command, output, token));
         }
         if (process.exitValue() != 0) {
-            throw new IOException("Command failed (" + process.exitValue() + "): "
-                    + command + "\n" + output);
+            throw new IOException(failureText(
+                    "Command failed (" + process.exitValue() + "): ",
+                    command,
+                    output,
+                    token
+            ));
         }
+    }
+
+    /**
+     * Git is invoked with the credential in the clone URL. A failure report
+     * includes that command, so the credential has to be stripped first.
+     */
+    static String failureText(String prefix, List<String> command, String output, String secret) {
+        String text = prefix + command + "\n" + (output == null ? "" : output);
+        if (secret == null || secret.isBlank()) {
+            return text;
+        }
+        return text.replace(secret, "[redacted]");
     }
 
     private static List<String> normalizeFolders(List<String> folders) {
