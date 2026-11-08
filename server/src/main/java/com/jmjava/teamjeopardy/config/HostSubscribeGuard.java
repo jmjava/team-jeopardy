@@ -11,11 +11,11 @@ import org.springframework.messaging.support.ChannelInterceptor;
 import org.springframework.stereotype.Component;
 
 /**
- * The simple broker treats {@code *} as a wildcard, so a subscribe to
- * {@code /topic/**} receives the unredacted host feed. Pattern subscribes are
- * dropped. The exact host destination requires the create-room token.
- * Returning null drops only that frame, so the same connection can still
- * follow the public topic.
+ * The simple broker treats {@code *}, {@code ?}, and {@code {name}} as
+ * subscription patterns, so a subscribe to {@code /topic/{feed}} receives the
+ * unredacted host feed. Pattern subscribes are dropped. The exact host
+ * destination requires the create-room token. Returning null drops only that
+ * frame, so the same connection can still follow the public topic.
  */
 @Component
 public class HostSubscribeGuard implements ChannelInterceptor {
@@ -40,7 +40,7 @@ public class HostSubscribeGuard implements ChannelInterceptor {
         if (destination == null || !destination.startsWith("/topic/")) {
             return message;
         }
-        if (destination.indexOf('*') >= 0 || destination.indexOf('?') >= 0) {
+        if (isPattern(destination)) {
             log.info("Rejected pattern subscribe to {}", destination);
             return null;
         }
@@ -54,5 +54,17 @@ public class HostSubscribeGuard implements ChannelInterceptor {
             }
         }
         return message;
+    }
+
+    /**
+     * Ant-style and URI-template destinations match every room topic, including
+     * the host feed. A brace is enough: {@code {name}} is a pattern even without
+     * a star.
+     */
+    static boolean isPattern(String destination) {
+        return destination.indexOf('*') >= 0
+                || destination.indexOf('?') >= 0
+                || destination.indexOf('{') >= 0
+                || destination.indexOf('}') >= 0;
     }
 }
