@@ -17,6 +17,7 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.StandardCopyOption;
@@ -202,6 +203,7 @@ public class GitHubRepoFetcher {
             sparse.addAll(folders);
             run(sparse, target, 30);
         }
+        forgetCloneCredential(target, repo.owner(), repo.name(), token);
         log.info("Cloned {}@{} into {} (folders={})", repo.fullName(), ref, target, folders);
     }
 
@@ -321,6 +323,38 @@ public class GitHubRepoFetcher {
      * Git is invoked with the credential in the clone URL. A failure report
      * includes that command, so the credential has to be stripped first.
      */
+    /**
+     * A clone URL that embeds the server credential is stored in {@code .git/config}.
+     * Replace that remote with the public URL before the tree is kept.
+     */
+    static void forgetCloneCredential(Path repo, String owner, String name, String secret) throws IOException {
+        if (repo == null || secret == null || secret.isBlank()) {
+            return;
+        }
+        Path gitDir = repo.resolve(".git");
+        if (Files.isSymbolicLink(gitDir)) {
+            throw new IOException("Refusing to update a symlinked git directory");
+        }
+        Path config = gitDir.resolve("config");
+        if (Files.isSymbolicLink(config)) {
+            throw new IOException("Refusing to update a symlinked git config");
+        }
+        if (!Files.isRegularFile(config, LinkOption.NOFOLLOW_LINKS)) {
+            return;
+        }
+        String text = Files.readString(config);
+        if (!text.contains(secret)) {
+            return;
+        }
+        String clean = "https://github.com/" + owner + "/" + name + ".git";
+        String tokenUrl = "https://x-access-token:" + secret + "@github.com/" + owner + "/" + name + ".git";
+        String updated = text.replace(tokenUrl, clean).replace(secret, "");
+        if (updated.contains(secret)) {
+            throw new IOException("Clone credential would remain in git config");
+        }
+        Files.writeString(config, updated);
+    }
+
     static String failureText(String prefix, List<String> command, String output, String secret) {
         String text = prefix + command + "\n" + (output == null ? "" : output);
         if (secret == null || secret.isBlank()) {
